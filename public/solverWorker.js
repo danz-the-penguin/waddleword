@@ -1187,6 +1187,7 @@ self.onmessage = async function (e) {
     enableIntel,
     manualAvailableTiles,
     scoreDifferential = 0,
+    bagCount = null,
     equityMode = "static",
     workerId = 0,
     numWorkers = 1,
@@ -1652,13 +1653,11 @@ self.onmessage = async function (e) {
     if (exposes2W === 1) defensivePenalty += 4.0; // Nerfed from 6.5
     if (exposes3L === 1) defensivePenalty += 2.0; // Nerfed from 4.0
 
-    // Stage 1 Multi-Multiplier Corridor Defense
+    // Stage 1 Multi-Multiplier Corridor Defense: Penalize moves that OPEN multi-multiplier corridors
     if (opensTripleTriple === 1) defensivePenalty += 24.0;
     if (opensDoubleDouble === 1) defensivePenalty += 12.0;
-    if (hasExposedTripleTriple && blocksTripleTriple === 0) defensivePenalty += 10.0;
-    if (hasExposedDoubleDouble && blocksDoubleDouble === 0) defensivePenalty += 5.0;
 
-    // Stage 2 (Option 1B): Board-Wide Exposed TWS Lane Defense & Risk
+    // Stage 2 (Option 1B): Board-Wide Exposed TWS Lane Defense
     let blocksExposedTwsLane = 0;
     if (totalExposedTwsCount > 0) {
       if (!isVertical) {
@@ -1670,13 +1669,6 @@ self.onmessage = async function (e) {
         // Vertical word along column `lineIdx`
         if ((exposedTwsColsMask & (1 << lineIdx)) !== 0) {
           blocksExposedTwsLane = 1;
-        }
-      }
-
-      if (blocksExposedTwsLane === 0) {
-        // Play is placed away from exposed TWS lanes, leaving them vulnerable to opponent hooks
-        if (twsThreatWeight >= 16.0 || UNSEEN_COUNTS[26] > 0) {
-          defensivePenalty += (twsThreatWeight * 0.35);
         }
       }
     }
@@ -1934,7 +1926,8 @@ self.onmessage = async function (e) {
   let bestExchange = null;
   let maxExchVal = -999;
 
-  if (workerId === 0 && totalUnseen >= 7) {
+  const canExchange = (typeof bagCount === "number") ? (bagCount >= 7) : (totalUnseen >= 14);
+  if (workerId === 0 && canExchange && initialWildcards === 0) {
     let bagEquitySum = 0;
     for (let c = 0; c < 26; c++)
       bagEquitySum += (UNSEEN_COUNTS[c] || 0) * (BASE_LEAVE_EQUITY[c] / 10.0);
@@ -1978,9 +1971,9 @@ self.onmessage = async function (e) {
         const expectedDrawValue = dumpCount * avgDrawEquityPerTile;
         // Anti-Surrender Tempo: Exchanging is strictly an emergency measure.
         // Never give top bots free unanswered turns when winning OR losing.
-        let tempoPenalty = -5.0;
-        if (scoreDifferential < -30) tempoPenalty = -10.0; // Trailing? Never give away free turns to top bots!
-        else if (scoreDifferential > 30) tempoPenalty = -8.0; // Leading? Protect the lead ruthlessly.
+        let tempoPenalty = -14.0;
+        if (scoreDifferential < -30) tempoPenalty = -18.0; // Trailing? Never give away free turns to top bots!
+        else if (scoreDifferential > 30) tempoPenalty = -16.0; // Leading? Protect the lead ruthlessly.
 
         const totalVal = leaveEquity + expectedDrawValue + tempoPenalty;
 
