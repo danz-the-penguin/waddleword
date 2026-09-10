@@ -15,14 +15,24 @@ import BoardCell from "./BoardCell";
 import ResultCard from "./ResultCard";
 import UnseenTileTracker from "./UnseenTileTracker";
 import FloatingDefinitionTooltip from "./FloatingDefinitionTooltip";
+import RefereeChecker from "./RefereeChecker";
 import { useDebounce } from "./useDebounce";
 import { useScrabbleHistory } from "./useScrabbleHistory";
 import { useSolverWorker } from "./useSolverWorker";
 import { parseGcgFile } from "./gcgParser";
 import { useDictionaryWorker } from "./useDictionaryWorker";
-import RefereeChecker from "./RefereeChecker";
-import { playTileClack, playWin98Chord, playButtonClick } from "./soundEffects";
-import { useDraggable } from "./useDraggable";
+import { playTileClack, playWin98Chord } from "./soundEffects";
+
+// Modularized components extracted in Stage 5
+import MenuBar from "./MenuBar";
+import ControlPanel from "./ControlPanel";
+import ReplayControls from "./ReplayControls";
+import RackTray from "./RackTray";
+import IntelPanel from "./IntelPanel";
+import StatusBar from "./StatusBar";
+import TutorialModal from "./TutorialModal";
+import HelpModal from "./HelpModal";
+import BlankTileModal from "./BlankTileModal";
 
 export default function WaddleWord() {
   // State to track the active visual theme ("classic" or "wood")
@@ -54,9 +64,6 @@ export default function WaddleWord() {
   const [rack, setRack] = useState("REOPMAJ");
   const [hoveredPlay, setHoveredPlay] = useState(null);
   const [blankPrompt, setBlankPrompt] = useState(null);
-  const helpDrag = useDraggable();
-  const tutorialDrag = useDraggable();
-  const blankDrag = useDraggable();
   const [showHelp, setShowHelp] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
   const [matchHistory, setMatchHistory] = useState([]);
@@ -631,10 +638,25 @@ export default function WaddleWord() {
     setRack(sanitized);
   };
 
+  const handleSelectBlank = useCallback((letter) => {
+    setBlankPrompt(null);
+    setTimeout(
+      () =>
+        window.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: letter,
+            shiftKey: true,
+          }),
+        ),
+      10,
+    );
+  }, []);
+
   return (
     <div className={`win98-body ${theme === "wood" ? "theme-hoyle" : ""}`}>
       <div className="win98-container">
         <div className="win98-window">
+          {/* Title Bar */}
           <div className="win98-titlebar">
             <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
               <div
@@ -674,403 +696,55 @@ export default function WaddleWord() {
             </div>
           </div>
 
-          {/* Classic Windows 98 Menu Bar for authentic desktop feel */}
-          <div className="win98-menubar">
-            <span className="menu-item">
-              <u>F</u>ile
-            </span>
-            <span className="menu-item">
-              <u>E</u>dit
-            </span>
-            <span className="menu-item">
-              <u>V</u>iew
-            </span>
-            <span
-              className="menu-item"
-              style={{ cursor: "pointer" }}
-              onClick={() => {
-                playButtonClick();
-                setShowTutorial(true);
-              }}
-            >
-              <u>T</u>utorial
-            </span>
-            <span
-              className="menu-item"
-              style={{ cursor: "pointer" }}
-              onClick={() => {
-                playButtonClick();
-                setShowHelp(true);
-              }}
-            >
-              <u>H</u>elp
-            </span>
-          </div>
+          {/* Windows 98 Menu Bar */}
+          <MenuBar
+            onOpenTutorial={() => setShowTutorial(true)}
+            onOpenHelp={() => setShowHelp(true)}
+          />
 
           <div className="win98-content">
-            {/* Toolbar Controls */}
-            <div
-              style={{
-                marginBottom: "10px",
-                display: "flex",
-                flexDirection: "column",
-                gap: "10px",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  gap: "10px",
-                  flexWrap: "wrap",
-                  width: "100%",
-                  alignItems: "stretch",
-                }}
-              >
-                <fieldset
-                  className="win98-fieldset"
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: "8px",
-                    margin: 0,
-                    flex: "1 1 auto",
-                    minWidth: "480px",
-                  }}
-                >
-                  <legend>Lexicon & Engine Rules</legend>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: "6px",
-                    }}
-                  >
-                    <label style={{ fontSize: "11px", fontWeight: "bold" }}>
-                      Preset:
-                    </label>
-                    <select
-                      className="win98-input"
-                      style={{
-                        width: "150px",
-                        cursor: "pointer",
-                        padding: "2px 4px",
-                      }}
-                      value={activePresetKey}
-                      onChange={(e) => handlePresetChange(e.target.value)}
-                    >
-                      {Object.entries(BOARD_PRESETS).map(([key, cfg]) => (
-                        <option key={key} value={key}>
-                          {cfg.name.replace(" (15x15)", "")}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: "6px",
-                    }}
-                  >
-                    <label
-                      style={{
-                        fontSize: "11px",
-                        fontWeight: "bold",
-                        color: "#b71c1c",
-                      }}
-                    >
-                      Sort By:
-                    </label>
-                    <select
-                      className="win98-input"
-                      style={{
-                        width: "150px",
-                        cursor: "pointer",
-                        padding: "2px 4px",
-                      }}
-                      value={sortMode}
-                      onChange={(e) => setSortMode(e.target.value)}
-                    >
-                      <option value="value">Strategic Value (Eq)</option>
-                      <option value="score">Highest Score</option>
-                    </select>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: "6px",
-                    }}
-                  >
-                    <label style={{ fontSize: "11px", fontWeight: "bold" }}>
-                      Lexicon:
-                    </label>
-                    <select
-                      className="win98-input"
-                      style={{
-                        width: "150px",
-                        cursor: "pointer",
-                        padding: "2px 4px",
-                      }}
-                      value={activeLexicon}
-                      onChange={(e) => setActiveLexicon(e.target.value)}
-                    >
-                      <option value="nwl2023">NWL2023 (NA)</option>
-                      <option value="csw24">CSW24 (Intl)</option>
-                      <option value="csw21">CSW21 (Legacy)</option>
-                      <option value="twl06">TWL06 (Classic)</option>
-                      <option value="sowpods">SOWPODS</option>
-                    </select>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: "6px",
-                    }}
-                  >
-                    <label
-                      style={{
-                        fontSize: "11px",
-                        fontWeight: "bold",
-                        color: "#b71c1c",
-                      }}
-                    >
-                      Engine:
-                    </label>
-                    <select
-                      className="win98-input"
-                      style={{
-                        width: "150px",
-                        cursor: "pointer",
-                        padding: "2px 4px",
-                      }}
-                      value={equityMode}
-                      onChange={(e) => setEquityMode(e.target.value)}
-                    >
-                      <option value="static">Static Baseline</option>
-                      <option value="trained">Trained (ML)</option>
-                    </select>
-                  </div>
-                </fieldset>
-
-                <fieldset
-                  className="win98-fieldset"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    margin: 0,
-                    flex: "1 1 auto",
-                  }}
-                >
-                  <legend>Game State</legend>
-                  <button
-                    className="win98-button"
-                    style={{
-                      fontWeight: "bold",
-                      backgroundColor: isBoardLocked ? "#c0c0c0" : "#ffcccc",
-                    }}
-                    onClick={() => setIsBoardLocked((prev) => !prev)}
-                  >
-                    {isBoardLocked
-                      ? "🔒 Locked (Search)"
-                      : "🔓 Unlocked (Opponent)"}
-                  </button>
-                  <button
-                    className="win98-button"
-                    style={{
-                      fontWeight: "bold",
-                      color: showHeatmap ? "#cc0000" : "inherit",
-                    }}
-                    onClick={() => setShowHeatmap((prev) => !prev)}
-                  >
-                    Heatmap: {showHeatmap ? "ON" : "OFF"}
-                  </button>
-                  <button
-                    className="win98-button"
-                    style={{ fontWeight: "bold" }}
-                    onClick={() =>
-                      setTypingDir((prev) => (prev === "H" ? "V" : "H"))
-                    }
-                    title="Tip: Hold Shift while typing to place a blank tile (0 points)"
-                  >
-                    Typing:{" "}
-                    {typingDir === "Right"
-                      ? "Across ➔"
-                      : typingDir === "Left"
-                        ? "Across ⬅"
-                        : typingDir === "Down"
-                          ? "Down ⬇"
-                          : "Up ⬆"}{" "}
-                    (Shift=Blank)
-                  </button>
-                  <button
-                    className="win98-button"
-                    style={{
-                      fontWeight: "bold",
-                      opacity: past.length === 0 ? 0.5 : 1,
-                      cursor: past.length === 0 ? "not-allowed" : "pointer",
-                    }}
-                    onClick={handleUndo}
-                    disabled={past.length === 0}
-                    title="Undo last play or change (Ctrl+Z)"
-                  >
-                    ↶ Undo
-                  </button>
-                  <button
-                    className="win98-button"
-                    style={{
-                      fontWeight: "bold",
-                      opacity: future.length === 0 ? 0.5 : 1,
-                      cursor: future.length === 0 ? "not-allowed" : "pointer",
-                    }}
-                    onClick={handleRedo}
-                    disabled={future.length === 0}
-                    title="Redo undone play or change (Ctrl+Y)"
-                  >
-                    Redo ↷
-                  </button>
-                  <button className="win98-button" onClick={clearBoard}>
-                    Clear Board
-                  </button>
-                </fieldset>
-
-                <fieldset
-                  className="win98-fieldset"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    margin: 0,
-                    flex: "1 1 auto",
-                  }}
-                >
-                  <legend>File & Theme</legend>
-                  <button
-                    className="win98-button"
-                    onClick={exportGame}
-                    title="Export game state"
-                  >
-                    💾 Export
-                  </button>
-                  <label
-                    className="win98-button"
-                    style={{
-                      display: "inline-block",
-                      cursor: "pointer",
-                      textAlign: "center",
-                    }}
-                    title="Import game state"
-                  >
-                    📂 Import
-                    <input
-                      type="file"
-                      accept=".json"
-                      onChange={importGame}
-                      style={{ display: "none" }}
-                    />
-                  </label>
-                  <button
-                    className="win98-button"
-                    onClick={() =>
-                      setTheme((t) => (t === "classic" ? "wood" : "classic"))
-                    }
-                    title="Toggle Visual Theme"
-                  >
-                    🎨 Theme: {theme === "classic" ? "Win98" : "Wood"}
-                  </button>
-                </fieldset>
-              </div>
-
-              {/* Dedicated Scoreboard Status Strip */}
-              <div style={{ marginTop: "10px", width: "100%" }}>
-                <div
-                  className="win98-inset"
-                  style={{
-                    display: "flex",
-                    padding: "4px 12px",
-                    width: "100%",
-                    backgroundColor: "var(--w98-bg)",
-                  }}
-                >
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      fontWeight: "bold",
-                      backgroundColor:
-                        inputMode === "me"
-                          ? "var(--w98-title-start)"
-                          : "transparent",
-                      color: inputMode === "me" ? "#fff" : "inherit",
-                      padding: "2px 6px",
-                    }}
-                  >
-                    My Score:
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      className="win98-input"
-                      style={{ width: "60px", textAlign: "right" }}
-                      value={myScore}
-                      onChange={(e) =>
-                        setMyScore(e.target.value.replace(/[^0-9]/g, ""))
-                      }
-                    />
-                  </label>
-                  <button
-                    className="win98-button"
-                    onClick={() =>
-                      setInputMode((m) => (m === "me" ? "opp" : "me"))
-                    }
-                    style={{
-                      fontWeight: "bold",
-                      color: inputMode === "opp" ? "#cc0000" : "inherit",
-                    }}
-                  >
-                    {inputMode === "me"
-                      ? "My Play 👤 (Alt+O)"
-                      : "Opponent Play 👿 (Alt+O)"}
-                  </button>
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      fontWeight: "bold",
-                      backgroundColor:
-                        inputMode === "opp" ? "#cc0000" : "transparent",
-                      color: inputMode === "opp" ? "#fff" : "#cc0000",
-                      padding: "2px 6px",
-                    }}
-                  >
-                    Opponent Score:
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      className="win98-input"
-                      style={{ width: "60px", textAlign: "right" }}
-                      value={oppScore}
-                      onChange={(e) =>
-                        setOppScore(e.target.value.replace(/[^0-9]/g, ""))
-                      }
-                    />
-                  </label>
-                </div>
-              </div>
-            </div>
+            {/* Toolbar Controls & Scoreboard */}
+            <ControlPanel
+              activePresetKey={activePresetKey}
+              onPresetChange={handlePresetChange}
+              BOARD_PRESETS={BOARD_PRESETS}
+              sortMode={sortMode}
+              onSortModeChange={setSortMode}
+              activeLexicon={activeLexicon}
+              onLexiconChange={setActiveLexicon}
+              equityMode={equityMode}
+              onEquityModeChange={setEquityMode}
+              isBoardLocked={isBoardLocked}
+              onToggleBoardLocked={() => setIsBoardLocked((prev) => !prev)}
+              showHeatmap={showHeatmap}
+              onToggleHeatmap={() => setShowHeatmap((prev) => !prev)}
+              typingDir={typingDir}
+              onToggleTypingDir={() =>
+                setTypingDir((d) => (["Right", "Left", "H"].includes(d) ? "Down" : "Right"))
+              }
+              canUndo={past.length > 0}
+              onUndo={handleUndo}
+              canRedo={future.length > 0}
+              onRedo={handleRedo}
+              onClearBoard={clearBoard}
+              onExportGame={exportGame}
+              onImportGame={importGame}
+              theme={theme}
+              onToggleTheme={() =>
+                setTheme((t) => (t === "classic" ? "wood" : "classic"))
+              }
+              myScore={myScore}
+              onMyScoreChange={setMyScore}
+              oppScore={oppScore}
+              onOppScoreChange={setOppScore}
+              inputMode={inputMode}
+              onToggleInputMode={() =>
+                setInputMode((m) => (m === "me" ? "opp" : "me"))
+              }
+            />
 
             <div className="v3-layout">
+              {/* Left Column: Board and Game State Trackers */}
               <div>
                 <input
                   id="hidden-board-input"
@@ -1177,103 +851,16 @@ export default function WaddleWord() {
                   </div>
                 </div>
 
-                <div
-                  className="win98-window"
-                  style={{
-                    marginTop: "10px",
-                    padding: "4px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    backgroundColor: "var(--w98-bg)",
+                {/* Replay Controls */}
+                <ReplayControls
+                  currentTurnIdx={currentTurnIdx}
+                  matchHistory={matchHistory}
+                  onSelectTurn={(newIdx) => {
+                    setCurrentTurnIdx(newIdx);
+                    applyHistoricalTurn(matchHistory[newIdx]);
                   }}
-                >
-                  <div style={{ display: "flex", gap: "4px" }}>
-                    <button
-                      className="win98-button"
-                      disabled={currentTurnIdx <= 0}
-                      onClick={() => {
-                        const newIdx = 0;
-                        setCurrentTurnIdx(newIdx);
-                        applyHistoricalTurn(matchHistory[newIdx]);
-                      }}
-                    >
-                      [|◄]
-                    </button>
-                    <button
-                      className="win98-button"
-                      disabled={currentTurnIdx <= 0}
-                      onClick={() => {
-                        const newIdx = currentTurnIdx - 1;
-                        setCurrentTurnIdx(newIdx);
-                        applyHistoricalTurn(matchHistory[newIdx]);
-                      }}
-                    >
-                      [◄]
-                    </button>
-                    <div
-                      className="win98-inset"
-                      style={{
-                        padding: "2px 8px",
-                        minWidth: "120px",
-                        textAlign: "center",
-                        backgroundColor: "#fff",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      {matchHistory.length > 0
-                        ? `Turn ${currentTurnIdx + 1} / ${matchHistory.length}`
-                        : "No Match Loaded"}
-                    </div>
-                    <button
-                      className="win98-button"
-                      disabled={currentTurnIdx >= matchHistory.length - 1}
-                      onClick={() => {
-                        const newIdx = currentTurnIdx + 1;
-                        setCurrentTurnIdx(newIdx);
-                        applyHistoricalTurn(matchHistory[newIdx]);
-                      }}
-                    >
-                      [►]
-                    </button>
-                    <button
-                      className="win98-button"
-                      disabled={currentTurnIdx >= matchHistory.length - 1}
-                      onClick={() => {
-                        const newIdx = matchHistory.length - 1;
-                        setCurrentTurnIdx(newIdx);
-                        applyHistoricalTurn(matchHistory[newIdx]);
-                      }}
-                    >
-                      [►|]
-                    </button>
-                  </div>
-                  <div
-                    style={{
-                      position: "relative",
-                      overflow: "hidden",
-                      display: "inline-block",
-                    }}
-                  >
-                    <button className="win98-button">📂 Load .GCG</button>
-                    <input
-                      type="file"
-                      accept=".gcg"
-                      onChange={handleGcgUpload}
-                      style={{
-                        position: "absolute",
-                        left: 0,
-                        top: 0,
-                        opacity: 0,
-                        width: "100%",
-                        height: "100%",
-                        cursor: "pointer",
-                      }}
-                    />
-                  </div>
-                </div>
+                  onGcgUpload={handleGcgUpload}
+                />
 
                 <UnseenTileTracker
                   board={board}
@@ -1293,6 +880,7 @@ export default function WaddleWord() {
                 />
               </div>
 
+              {/* Right Column: Rack, Opponent Intel & Candidate Plays */}
               <div
                 style={{
                   display: "flex",
@@ -1301,190 +889,33 @@ export default function WaddleWord() {
                 }}
               >
                 {/* Physical Wooden Rack Tray & Input */}
-                <div className="rack-container">
-                  <label
-                    style={{
-                      fontSize: "11px",
-                      fontWeight: "bold",
-                      display: "block",
-                      marginBottom: "4px",
-                    }}
-                  >
-                    Your Rack Tiles:
-                  </label>
-                  <div style={{ display: "flex", gap: "6px" }}>
-                    <input
-                      type="text"
-                      maxLength={7}
-                      className="win98-input"
-                      style={{ fontSize: "14px", padding: "4px 6px" }}
-                      value={rack}
-                      onChange={(e) => handleRackChange(e.target.value)}
-                      placeholder="E.g. REOPMAJ? or ? for blank"
-                    />
-                    <button
-                      className="win98-button"
-                      onClick={() =>
-                        setRack((r) =>
-                          r
-                            .split("")
-                            .sort(() => Math.random() - 0.5)
-                            .join(""),
-                        )
-                      }
-                    >
-                      Shuffle
-                    </button>
-                  </div>
-
-                  {/* Tray Display */}
-                  <div className="rack-tray">
-                    {rack.trim().length === 0 ? (
-                      <span
-                        style={{
-                          fontSize: "11px",
-                          color: "#d4a373",
-                          fontStyle: "italic",
-                          padding: "4px",
-                        }}
-                      >
-                        Empty rack (Type letters above)...
-                      </span>
-                    ) : (
-                      rack.split("").map((ch, idx) => {
-                        const isBlank = ["?", ".", "0", "*", "_"].includes(ch);
-                        const score = isBlank
-                          ? 0
-                          : (activePreset?.scores?.[ch.toLowerCase()] ?? 0);
-                        return (
-                          <div
-                            key={idx}
-                            className="scrabble-tile-rack"
-                            title={
-                              isBlank
-                                ? "Blank / Wildcard Tile (0 pts)"
-                                : `${ch.toUpperCase()} (${score} pts)`
-                            }
-                          >
-                            <span>{isBlank ? "" : ch.toUpperCase()}</span>
-                            {!isBlank && (
-                              <sub className="tile-score-sub">{score}</sub>
-                            )}
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
+                <RackTray
+                  rack={rack}
+                  onRackChange={handleRackChange}
+                  onShuffle={() =>
+                    setRack((r) =>
+                      r
+                        .split("")
+                        .sort(() => Math.random() - 0.5)
+                        .join(""),
+                    )
+                  }
+                  scores={activePreset?.scores}
+                />
 
                 {/* Opponent Intel & Prediction Module */}
-                <div className="options-panel">
-                  <div
-                    className="options-panel-title"
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                    }}
-                  >
-                    <label
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "4px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={enableIntel}
-                        onChange={(e) => setEnableIntel(e.target.checked)}
-                      />
-                      Opponent Intel & Minimax Counter
-                    </label>
-                    <button
-                      className="win98-button"
-                      style={{ padding: "0 6px", fontSize: "10px" }}
-                      onClick={() => setShowIntelSettings((prev) => !prev)}
-                    >
-                      {showIntelSettings ? "▲ Hide" : "▼ Settings"}
-                    </button>
-                  </div>
+                <IntelPanel
+                  enableIntel={enableIntel}
+                  onToggleIntel={setEnableIntel}
+                  showIntelSettings={showIntelSettings}
+                  onToggleIntelSettings={() => setShowIntelSettings((prev) => !prev)}
+                  intelMode={intelMode}
+                  onIntelModeChange={setIntelMode}
+                  manualAvailableTiles={manualAvailableTiles}
+                  onManualAvailableTilesChange={setManualAvailableTiles}
+                />
 
-                  {enableIntel && showIntelSettings && (
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "8px",
-                        marginTop: "8px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: "10px",
-                          fontSize: "11px",
-                        }}
-                      >
-                        <label
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "4px",
-                            cursor: "pointer",
-                          }}
-                        >
-                          <input
-                            type="radio"
-                            name="intelMode"
-                            value="auto"
-                            checked={intelMode === "auto"}
-                            onChange={() => setIntelMode("auto")}
-                          />
-                          Auto (Endgame Deduce)
-                        </label>
-                        <label
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "4px",
-                            cursor: "pointer",
-                          }}
-                        >
-                          <input
-                            type="radio"
-                            name="intelMode"
-                            value="manual"
-                            checked={intelMode === "manual"}
-                            onChange={() => setIntelMode("manual")}
-                          />
-                          Manual (Paste Woogles Tiles)
-                        </label>
-                      </div>
-
-                      {intelMode === "manual" && (
-                        <div>
-                          <input
-                            type="text"
-                            className="win98-input"
-                            style={{ fontSize: "11px", padding: "4px" }}
-                            placeholder="Paste 'Available Tiles' from Woogles (e.g. AABCDEE...)"
-                            value={manualAvailableTiles}
-                            onChange={(e) =>
-                              setManualAvailableTiles(
-                                e.target.value
-                                  .toUpperCase()
-                                  .replace(/[^A-Z?]/g, ""),
-                              )
-                            }
-                          />
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
+                {/* Ranked Strategic Plays List */}
                 <div
                   className="win98-window"
                   style={{
@@ -1560,516 +991,32 @@ export default function WaddleWord() {
             </div>
           </div>
 
-          <div className="win98-statusbar">
-            <div style={{ flex: 1 }}>
-              {isSolving
-                ? gpuEnabled
-                  ? "⏳ GPU Compute MCTS..."
-                  : "⏳ Solving (8 Workers)..."
-                : gpuEnabled
-                  ? "✔ WebGPU Engine Ready"
-                  : "✔ CPU Engine Ready"}
-            </div>
-            <div>
-              Turn: {inputMode === "me" ? "Player (Alt+O)" : "Opponent (Alt+O)"}
-            </div>
-            <div>
-              Diff:{" "}
-              {scoreDifferential > 0
-                ? `+${scoreDifferential}`
-                : scoreDifferential}
-            </div>
-            <div
-              style={{
-                padding: "0 2px",
-                color: "var(--w98-border-dark)",
-                letterSpacing: "1px",
-              }}
-            >
-              {"///"}
-            </div>
-          </div>
+          {/* Status Bar */}
+          <StatusBar
+            isSolving={isSolving}
+            gpuEnabled={gpuEnabled}
+            inputMode={inputMode}
+            scoreDifferential={scoreDifferential}
+          />
         </div>
 
-        {showTutorial && (
-          <div
-            className="win98-window"
-            style={{
-              position: "fixed",
-              top: "50%",
-              left: "50%",
-              transform: `translate(calc(-50% + ${tutorialDrag.position.x}px), calc(-50% + ${tutorialDrag.position.y}px))`,
-              zIndex: 10000,
-              padding: "10px",
-              width: "400px",
-              maxWidth: "95vw",
-              boxShadow: "2px 2px 10px rgba(0,0,0,0.5)",
-            }}
-          >
-            <div
-              className="win98-titlebar"
-              onPointerDown={tutorialDrag.handlePointerDown}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginBottom: "8px",
-                cursor: "grab",
-              }}
-            >
-              <span>Engine Tutorial & Math</span>
-              <button
-                className="win98-button win98-btn-sys"
-                onClick={() => setShowTutorial(false)}
-              >
-                X
-              </button>
-            </div>
-            <div
-              className="win98-inset"
-              style={{
-                padding: "10px",
-                fontSize: "12px",
-                lineHeight: "1.5",
-                backgroundColor: "#fff",
-                maxHeight: "60vh",
-                overflowY: "auto",
-              }}
-            >
-              <h4
-                style={{
-                  margin: "0 0 8px 0",
-                  color: "var(--w98-title-start)",
-                }}
-              >
-                1. The GADDAG Engine
-              </h4>
-              <p style={{ margin: "0 0 12px 0", color: "#222" }}>
-                Instead of searching a linear dictionary, this engine uses a{" "}
-                <strong>GADDAG</strong> (a specialized directed acyclic word
-                graph). It stores words folded around every possible anchor. This
-                allows the bot to latch onto any tile on the board and instantly
-                build words outward in both directions simultaneously, checking
-                millions of permutations in milliseconds.
-              </p>
+        {/* Modals */}
+        <TutorialModal
+          isOpen={showTutorial}
+          onClose={() => setShowTutorial(false)}
+        />
 
-              <h4
-                style={{
-                  margin: "0 0 8px 0",
-                  color: "var(--w98-title-start)",
-                }}
-              >
-                2. Value = Score + Leave Equity
-              </h4>
-              <p style={{ margin: "0 0 12px 0", color: "#222" }}>
-                The bot doesn&apos;t just play for the highest immediate score; it
-                plays for the future. <br />
-                <strong>Score:</strong> Immediate points on the board.
-                <br />
-                <strong>Leave Equity:</strong> The statistical value of the tiles
-                kept on your rack. Good letters (A, E, R, S, T, Blanks) have
-                positive equity because they increase future Bingo chances.
-                Clunky letters (Q, V, W) subtract equity.
-              </p>
+        <HelpModal
+          isOpen={showHelp}
+          onClose={() => setShowHelp(false)}
+        />
 
-              <h4
-                style={{
-                  margin: "0 0 8px 0",
-                  color: "var(--w98-title-start)",
-                }}
-              >
-                3. Defensive Adjustments
-              </h4>
-              <p style={{ margin: "0 0 12px 0", color: "#222" }}>
-                If a play exposes a high-value premium square (like a Triple Word
-                Score) for the opponent, the engine applies a &quot;Defense
-                Penalty&quot; to the play&apos;s total value, effectively demoting
-                risky moves.
-              </p>
+        <BlankTileModal
+          isOpen={Boolean(blankPrompt)}
+          onClose={() => setBlankPrompt(null)}
+          onSelectLetter={handleSelectBlank}
+        />
 
-              <h4
-                style={{
-                  margin: "0 0 8px 0",
-                  color: "var(--w98-title-start)",
-                }}
-              >
-                4. Tactical Badges
-              </h4>
-              <ul
-                style={{
-                  margin: "0 0 12px 0",
-                  paddingLeft: "20px",
-                  color: "#222",
-                  fontSize: "11px",
-                }}
-              >
-                <li style={{ marginBottom: "4px" }}>
-                  <span
-                    className="badge-dict-only"
-                    style={{
-                      backgroundColor: "#e3f2fd",
-                      color: "#1565c0",
-                      borderColor: "#90caf9",
-                      padding: "1px 3px",
-                      fontSize: "9px",
-                    }}
-                  >
-                    BINGO
-                  </span>{" "}
-                  Played all 7 tiles from your rack, earning a 50-point bonus.
-                </li>
-                <li style={{ marginBottom: "4px" }}>
-                  <span
-                    className="badge-legal"
-                    style={{
-                      backgroundColor: "#8e24aa",
-                      padding: "1px 3px",
-                      fontSize: "9px",
-                    }}
-                  >
-                    POWER PLAY
-                  </span>{" "}
-                  A massive move scoring 50+ points without using all 7 tiles.
-                </li>
-                <li style={{ marginBottom: "4px" }}>
-                  <span
-                    className="badge-risk-safe"
-                    style={{ padding: "1px 3px", fontSize: "9px" }}
-                  >
-                    SAFE LEAVE
-                  </span>{" "}
-                  &{" "}
-                  <span
-                    className="badge-legal"
-                    style={{
-                      backgroundColor: "#1565c0",
-                      padding: "1px 3px",
-                      fontSize: "9px",
-                    }}
-                  >
-                    BLOCKS DWS
-                  </span>{" "}
-                  Defensively sound plays that lock down the board and deny your
-                  opponent premium multipliers.
-                </li>
-                <li style={{ marginBottom: "4px" }}>
-                  <span
-                    className="badge-risk-high"
-                    style={{ padding: "1px 3px", fontSize: "9px" }}
-                  >
-                    RISK: 3W
-                  </span>{" "}
-                  &{" "}
-                  <span
-                    className="badge-illegal"
-                    style={{
-                      backgroundColor: "#d84315",
-                      padding: "1px 3px",
-                      fontSize: "9px",
-                    }}
-                  >
-                    OPENS TWS
-                  </span>{" "}
-                  Warning! This play opens a highly dangerous Triple Word Score
-                  lane for your opponent.
-                </li>
-                <li style={{ marginBottom: "4px" }}>
-                  <span
-                    className="badge-legal"
-                    style={{
-                      backgroundColor: "#ff8f00",
-                      padding: "1px 3px",
-                      fontSize: "9px",
-                    }}
-                  >
-                    HOT SPOT
-                  </span>{" "}
-                  A highly tactical placement that forms multiple intersecting
-                  words at once.
-                </li>
-                <li style={{ marginBottom: "4px" }}>
-                  <span
-                    className="badge-illegal"
-                    style={{
-                      backgroundColor: "#b71c1c",
-                      color: "#ffffff",
-                      borderColor: "#ef5350",
-                      padding: "1px 3px",
-                      fontSize: "9px",
-                    }}
-                  >
-                    ⚠️ POISON LEAVE
-                  </span>{" "}
-                  Danger! This play retains toxic, uncooperative letter combinations (such as V+W, duplicate V, Q without U, or severe negative equity &le; -12 pts), drastically crippling your next draw.
-                </li>
-                <li>
-                  <span
-                    className="badge-illegal"
-                    style={{
-                      backgroundColor: "#e65100",
-                      color: "#ffffff",
-                      borderColor: "#ffb74d",
-                      padding: "1px 3px",
-                      fontSize: "9px",
-                    }}
-                  >
-                    ⚠️ VOWEL FLOOD
-                  </span>{" "}
-                  Warning! Leaves 4+ vowels or triple duplicate vowels (e.g. I-I-I), leaving you vowel-heavy and drastically lowering your bingo odds.
-                </li>
-              </ul>
-
-              <div style={{ textAlign: "center", marginTop: "10px" }}>
-                <button
-                  className="win98-button"
-                  onClick={() => setShowTutorial(false)}
-                >
-                  OK
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showHelp && (
-          <div
-            className="win98-window"
-            style={{
-              position: "fixed",
-              top: "50%",
-              left: "50%",
-              transform: `translate(calc(-50% + ${helpDrag.position.x}px), calc(-50% + ${helpDrag.position.y}px))`,
-              zIndex: 10000,
-              padding: "10px",
-              width: "360px",
-              boxShadow: "2px 2px 10px rgba(0,0,0,0.5)",
-            }}
-          >
-            <div
-              className="win98-titlebar"
-              onPointerDown={helpDrag.handlePointerDown}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginBottom: "8px",
-                cursor: "grab",
-              }}
-            >
-              <span>Help & Hotkeys</span>
-              <button
-                className="win98-button win98-btn-sys"
-                onClick={() => setShowHelp(false)}
-              >
-                X
-              </button>
-            </div>
-            <div
-              className="win98-inset"
-              style={{
-                padding: "10px",
-                fontSize: "12px",
-                lineHeight: "1.5",
-                backgroundColor: "#fff",
-                maxHeight: "60vh",
-                overflowY: "auto",
-              }}
-            >
-              <h4
-                style={{
-                  margin: "0 0 8px 0",
-                  color: "var(--w98-title-start)",
-                }}
-              >
-                Keyboard Shortcuts
-              </h4>
-              <ul
-                style={{
-                  paddingLeft: "20px",
-                  margin: "0 0 12px 0",
-                  color: "#222",
-                }}
-              >
-                <li style={{ marginBottom: "4px" }}>
-                  <strong>Arrow Keys:</strong> Move the cursor around the board.
-                </li>
-                <li style={{ marginBottom: "4px" }}>
-                  <strong>Shift + Arrow Keys:</strong> Change typing direction
-                  (►, ◄, ▼, ▲) without moving.
-                </li>
-                <li style={{ marginBottom: "4px" }}>
-                  <strong>Spacebar:</strong> Toggle typing direction.
-                </li>
-                <li style={{ marginBottom: "4px" }}>
-                  <strong>? or / :</strong> Open the Blank Tile selector. Click
-                  a letter or press it on your keyboard to place a 0-point tile.
-                </li>
-                <li style={{ marginBottom: "4px" }}>
-                  <strong>Tab:</strong> Select the top suggested play to reveal
-                  its Math (Value = Score + Leave Equity) and Next-Turn Bingo
-                  Probability.
-                </li>
-                <li style={{ marginBottom: "4px" }}>
-                  <strong>Alt + O:</strong> Switch between &quot;My Play&quot;
-                  and &quot;Opponent Play&quot;.
-                </li>
-                <li>
-                  <strong>Ctrl + Z / Y:</strong> Undo or Redo board history.
-                </li>
-              </ul>
-
-              <h4
-                style={{
-                  margin: "12px 0 8px 0",
-                  color: "var(--w98-title-start)",
-                }}
-              >
-                Credits &amp; Acknowledgments
-              </h4>
-              <div style={{ fontSize: "11px", color: "#333" }}>
-                This project stands on the shoulders of giants within the
-                computer science and competitive word game communities:
-                <ul
-                  style={{
-                    paddingLeft: "16px",
-                    margin: "8px 0",
-                    listStyleType: "square",
-                  }}
-                >
-                  <li style={{ marginBottom: "6px" }}>
-                    <strong>Kamil Mielnik (Scrabble Solver):</strong> Pioneer of open-source
-                    web-based board solvers, whose work served as an architectural reference and inspiration.
-                  </li>
-                  <li style={{ marginBottom: "6px" }}>
-                    <strong>Quackle:</strong> The gold-standard open-source
-                    crossword AI. The endgame synergy weights were extracted
-                    directly from Quackle&apos;s pre-calculated strategy datasets.
-                  </li>
-                  <li style={{ marginBottom: "6px" }}>
-                    <strong>Woogles.io &amp; Cross-Tables.com:</strong> For
-                    providing an incredible open platform, UI workflows, and
-                    exhaustive public archives of Grandmaster .gcg tournament
-                    files.
-                  </li>
-                  <li style={{ marginBottom: "6px" }}>
-                    <strong>Steven A. Gordon:</strong> For formulating the
-                    GADDAG Data Structure (1994), the deterministic acyclic
-                    finite state automaton that powers this engine&apos;s move
-                    generation.
-                  </li>
-                  <li style={{ marginBottom: "6px" }}>
-                    <strong>Albert Zobrist:</strong> For Zobrist Hashing, used
-                    within the Transposition Table to cache board states in O(1)
-                    time during Alpha-Beta pruning.
-                  </li>
-                  <li style={{ marginBottom: "6px" }}>
-                    <strong>NASPA &amp; WESPA:</strong> For the curation and
-                    maintenance of the official competitive Scrabble lexicons
-                    (NWL and CSW).
-                  </li>
-                  <li style={{ marginBottom: "6px" }}>
-                    <strong>PCG (Permuted Congruential Generator):</strong> For
-                    the performant pseudo-random number generator used directly
-                    within the WGSL Compute Shader.
-                  </li>
-                  <li style={{ marginBottom: "6px" }}>
-                    <strong>Sierra On-Line (Hoyle Classic Games):</strong> A
-                    primary design inspiration for the customized, wooden
-                    Windows 98 aesthetic.
-                  </li>
-                </ul>
-              </div>
-
-              <div style={{ textAlign: "center", marginTop: "10px" }}>
-                <button
-                  className="win98-button"
-                  onClick={() => setShowHelp(false)}
-                >
-                  OK
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {blankPrompt && (
-          <div
-            className="win98-window"
-            style={{
-              position: "fixed",
-              top: "50%",
-              left: "50%",
-              transform: `translate(calc(-50% + ${blankDrag.position.x}px), calc(-50% + ${blankDrag.position.y}px))`,
-              zIndex: 10000,
-              padding: "10px",
-              width: "300px",
-              boxShadow: "2px 2px 10px rgba(0,0,0,0.5)",
-            }}
-          >
-            <div
-              className="win98-titlebar"
-              onPointerDown={blankDrag.handlePointerDown}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginBottom: "8px",
-                cursor: "grab",
-              }}
-            >
-              <span>Select Blank Tile</span>
-              <button
-                className="win98-button win98-btn-sys"
-                onClick={() => setBlankPrompt(null)}
-              >
-                X
-              </button>
-            </div>
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "4px",
-                justifyContent: "center",
-              }}
-            >
-              {"ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map((letter) => (
-                <button
-                  key={letter}
-                  className="win98-button"
-                  style={{
-                    width: "28px",
-                    height: "28px",
-                    fontWeight: "bold",
-                    fontSize: "14px",
-                  }}
-                  onClick={() => {
-                    setBlankPrompt(null);
-                    setTimeout(
-                      () =>
-                        window.dispatchEvent(
-                          new KeyboardEvent("keydown", {
-                            key: letter,
-                            shiftKey: true,
-                          }),
-                        ),
-                      10,
-                    );
-                  }}
-                >
-                  {letter}
-                </button>
-              ))}
-            </div>
-            <div
-              style={{
-                marginTop: "10px",
-                fontSize: "11px",
-                textAlign: "center",
-                color: "#444",
-              }}
-            >
-              Or press any letter key (Esc to cancel)
-            </div>
-          </div>
-        )}
         <FloatingDefinitionTooltip
           hoveredPlay={hoveredPlay}
           lookupWord={lookupWord}
