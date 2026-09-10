@@ -96,8 +96,7 @@ export default function WaddleWord() {
 
   const [selectedCell, setSelectedCell] = useState([7, 7]);
 
-  const activePreset =
-    BOARD_PRESETS[activePresetKey] || BOARD_PRESETS.scrabble;
+  const activePreset = BOARD_PRESETS[activePresetKey] || BOARD_PRESETS.scrabble;
 
   const stagedMoveEvaluation = useMemo(() => {
     return calculateBoardMoveScore(board, committedBoard, activePreset);
@@ -489,7 +488,9 @@ export default function WaddleWord() {
       const currentTypingDir = typingDirRef.current;
 
       if (/^[a-zA-Z]$/.test(e.key)) {
-        const typedChar = e.shiftKey ? e.key.toLowerCase() : e.key.toUpperCase();
+        const typedChar = e.shiftKey
+          ? e.key.toLowerCase()
+          : e.key.toUpperCase();
         const existingTile = currentBoard[r][c];
         const existingOwner = currentOwner[r][c];
         const opponentMode = inputModeRef.current === "me" ? "opp" : "me";
@@ -498,7 +499,9 @@ export default function WaddleWord() {
 
         if (existingTile && existingOwner === opponentMode) {
           if (existingTile.toUpperCase() === typedChar.toUpperCase()) {
-            setSelectedCell(findNextTargetCell(currentBoard, r, c, currentTypingDir));
+            setSelectedCell(
+              findNextTargetCell(currentBoard, r, c, currentTypingDir),
+            );
           }
         } else {
           pushHistory();
@@ -512,14 +515,22 @@ export default function WaddleWord() {
             next[r][c] = inputModeRef.current;
             return next;
           });
-          setSelectedCell(findNextTargetCell(currentBoard, r, c, currentTypingDir));
+          setSelectedCell(
+            findNextTargetCell(currentBoard, r, c, currentTypingDir),
+          );
         }
       } else if (e.key === "Backspace") {
         e.preventDefault();
         playTileClack();
         const opponentMode = inputModeRef.current === "me" ? "opp" : "me";
-        const stepR = currentTypingDir === "Down" ? -1 : currentTypingDir === "Up" ? 1 : 0;
-        const stepC = currentTypingDir === "Right" ? -1 : currentTypingDir === "Left" ? 1 : 0;
+        const stepR =
+          currentTypingDir === "Down" ? -1 : currentTypingDir === "Up" ? 1 : 0;
+        const stepC =
+          currentTypingDir === "Right"
+            ? -1
+            : currentTypingDir === "Left"
+              ? 1
+              : 0;
 
         const clearCell = (tr, tc) => {
           setBoard((prev) => {
@@ -613,9 +624,7 @@ export default function WaddleWord() {
     const addedScore = moveRes.score;
 
     if (!isOpp) {
-      setMyScore((prev) =>
-        ((parseInt(prev, 10) || 0) + addedScore).toString(),
-      );
+      setMyScore((prev) => ((parseInt(prev, 10) || 0) + addedScore).toString());
       setInputMode("opp");
 
       setRack((prevRack) => {
@@ -894,7 +903,10 @@ export default function WaddleWord() {
   const handleLeavePlay = useCallback(() => setHoveredPlay(null), []);
 
   const handleRackChange = (val) => {
-    const sanitized = val.toUpperCase().replace(/[^A-Z?.*_0]/g, "").slice(0, 7);
+    const sanitized = val
+      .toUpperCase()
+      .replace(/[^A-Z?.*_0]/g, "")
+      .slice(0, 7);
     setRack(sanitized);
   };
 
@@ -947,9 +959,7 @@ export default function WaddleWord() {
               </button>
               <button
                 className="win98-button win98-btn-sys"
-                onClick={() =>
-                  (window.location.href = "https://penguins-portfolio.vercel.app")
-                }
+                onClick={() => (window.location.href = " ")}
               >
                 ✕
               </button>
@@ -980,7 +990,9 @@ export default function WaddleWord() {
               onToggleHeatmap={() => setShowHeatmap((prev) => !prev)}
               typingDir={typingDir}
               onToggleTypingDir={() =>
-                setTypingDir((d) => (["Right", "Left", "H"].includes(d) ? "Down" : "Right"))
+                setTypingDir((d) =>
+                  ["Right", "Left", "H"].includes(d) ? "Down" : "Right",
+                )
               }
               canUndo={past.length > 0}
               onUndo={handleUndo}
@@ -1099,9 +1111,13 @@ export default function WaddleWord() {
                               ? selectedCell[0] === r
                               : selectedCell[1] === c);
                           const previewChar = previewMap[`${r},${c}`];
-                          const oppPreviewChar = !previewChar ? oppPreviewMap[`${r},${c}`] : null;
+                          const oppPreviewChar = !previewChar
+                            ? oppPreviewMap[`${r},${c}`]
+                            : null;
                           const premium = activePreset.premiums[`${r},${c}`];
-                          const isUncommitted = Boolean(tileVal && !committedBoard[r]?.[c]);
+                          const isUncommitted = Boolean(
+                            tileVal && !committedBoard[r]?.[c],
+                          );
 
                           return (
                             <BoardCell
@@ -1185,7 +1201,9 @@ export default function WaddleWord() {
                   enableIntel={enableIntel}
                   onToggleIntel={setEnableIntel}
                   showIntelSettings={showIntelSettings}
-                  onToggleIntelSettings={() => setShowIntelSettings((prev) => !prev)}
+                  onToggleIntelSettings={() =>
+                    setShowIntelSettings((prev) => !prev)
+                  }
                   intelMode={intelMode}
                   onIntelModeChange={setIntelMode}
                   manualAvailableTiles={manualAvailableTiles}
@@ -1284,10 +1302,7 @@ export default function WaddleWord() {
           onClose={() => setShowTutorial(false)}
         />
 
-        <HelpModal
-          isOpen={showHelp}
-          onClose={() => setShowHelp(false)}
-        />
+        <HelpModal isOpen={showHelp} onClose={() => setShowHelp(false)} />
 
         <BlankTileModal
           isOpen={Boolean(blankPrompt)}
