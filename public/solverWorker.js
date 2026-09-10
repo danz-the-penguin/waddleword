@@ -678,11 +678,17 @@ const MULTI_CORRIDORS = [
   { name: "V_Col14_Top",   isVert: true,  line: 14, start: 0, end: 7,  type: 9, m1: 14,  m2: 119 },
   { name: "V_Col14_Bottom",isVert: true,  line: 14, start: 7, end: 14, type: 9, m1: 119, m2: 224 },
   
-  // 4 Prime Double-Double (4x) Corridors (Distance 6)
+  // 8 Double-Double (4x) Corridors
+  // 4 Prime Distance-6 Corridors (7-square spans)
   { name: "V_Col4_E5_E11",    isVert: true,  line: 4,  start: 4, end: 10, type: 4, m1: 64,  m2: 154 },
   { name: "V_Col10_K5_K11",   isVert: true,  line: 10, start: 4, end: 10, type: 4, m1: 70,  m2: 160 },
   { name: "H_Row4_E5_K5",     isVert: false, line: 4,  start: 4, end: 10, type: 4, m1: 64,  m2: 70 },
-  { name: "H_Row10_E11_K11",  isVert: false, line: 10, start: 4, end: 10, type: 4, m1: 154, m2: 160 }
+  { name: "H_Row10_E11_K11",  isVert: false, line: 10, start: 4, end: 10, type: 4, m1: 154, m2: 160 },
+  // 4 Distance-8 Corridors (9-square spans bridgeable with intermediate anchor)
+  { name: "H_Row3_D4_L4",     isVert: false, line: 3,  start: 3, end: 11, type: 4, m1: 48,  m2: 56 },
+  { name: "H_Row11_D12_L12",  isVert: false, line: 11, start: 3, end: 11, type: 4, m1: 168, m2: 176 },
+  { name: "V_Col3_D4_D12",    isVert: true,  line: 3,  start: 3, end: 11, type: 4, m1: 48,  m2: 168 },
+  { name: "V_Col11_L4_L12",   isVert: true,  line: 11, start: 3, end: 11, type: 4, m1: 56,  m2: 176 }
 ];
 
 // Stage 1: Fast Host Candidate Board Metric Computation
@@ -1994,7 +2000,9 @@ self.onmessage = async function (e) {
             isHotSpot: false,
             blocksExposedTwsLane: 0,
             opensTripleTriple: false,
+            exposesTripleTriple: false,
             opensDoubleDouble: false,
+            exposesDoubleDouble: false,
             blocksTripleTriple: false,
             blocksDoubleDouble: false,
             blankSurchargeApplied: false,
@@ -2234,7 +2242,9 @@ self.onmessage = async function (e) {
       isHotSpot: (RES_TACTICS[idx] & 8) === 8,
       blocksExposedTwsLane: (RES_TACTICS[idx] & 16) === 16 ? 1 : 0,
       opensTripleTriple: (RES_TACTICS[idx] & 32) === 32,
+      exposesTripleTriple: (RES_TACTICS[idx] & 32) === 32,
       opensDoubleDouble: (RES_TACTICS[idx] & 64) === 64,
+      exposesDoubleDouble: (RES_TACTICS[idx] & 64) === 64,
       blocksTripleTriple: (RES_TACTICS[idx] & 128) === 128,
       blocksDoubleDouble: (RES_TACTICS[idx] & 256) === 256,
       blankSurchargeApplied: (RES_TACTICS[idx] & 512) === 512,

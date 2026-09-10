@@ -166,7 +166,7 @@ const ResultCard = React.memo(
                   </span>
                 )}
 
-                {play.opensTripleTriple && (
+                {(play.opensTripleTriple || play.exposesTripleTriple) && (
                   <span
                     className="badge-illegal"
                     style={{
@@ -183,7 +183,7 @@ const ResultCard = React.memo(
                   </span>
                 )}
 
-                {play.opensDoubleDouble && (
+                {(play.opensDoubleDouble || play.exposesDoubleDouble) && (
                   <span
                     className="badge-illegal"
                     style={{
