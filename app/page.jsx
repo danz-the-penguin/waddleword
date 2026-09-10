@@ -38,9 +38,9 @@ import BlankTileModal from "./BlankTileModal";
 export default function WaddleWord() {
   // State to track the active visual theme ("classic" or "wood")
   const [theme, setTheme] = useState("classic");
-  const [activePresetKey, setActivePresetKey] = useState("plato_literati");
+  const [activePresetKey, setActivePresetKey] = useState("scrabble");
 
-  const [activeLexicon, setActiveLexicon] = useState("nwl2023");
+  const [activeLexicon, setActiveLexicon] = useState("csw24");
   const [sortMode, setSortMode] = useState("value");
 
   // Opponent Intel & Deduction State
@@ -97,7 +97,7 @@ export default function WaddleWord() {
   const [selectedCell, setSelectedCell] = useState([7, 7]);
 
   const activePreset =
-    BOARD_PRESETS[activePresetKey] || BOARD_PRESETS.plato_literati;
+    BOARD_PRESETS[activePresetKey] || BOARD_PRESETS.scrabble;
 
   const stagedMoveEvaluation = useMemo(() => {
     return calculateBoardMoveScore(board, committedBoard, activePreset);
