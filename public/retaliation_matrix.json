@@ -1,58 +1,58 @@
 {
   "metadata": {
-    "generatedAt": "2026-09-10T13:58:31.025Z",
-    "matchFilesProcessed": 3131,
-    "turnPairsAnalyzed": 75187,
-    "centerBaselineScore": 34.12
+    "generatedAt": "2026-09-10T18:08:58.748Z",
+    "matchFilesProcessed": 3947,
+    "turnPairsAnalyzed": 94065,
+    "centerBaselineScore": 34.65
   },
   "regions": {
     "perimeter": {
       "description": "Perimeter (Rows/Cols 0,1,13,14)",
-      "sampleSize": 42186,
-      "avgOppScore": 34.6,
-      "penaltyDeltaVsCenter": 0.4,
-      "bingoProbability": 19.9,
-      "blowout70Probability": 12.1
+      "sampleSize": 52910,
+      "avgOppScore": 35,
+      "penaltyDeltaVsCenter": 0.3,
+      "bingoProbability": 20.3,
+      "blowout70Probability": 12.4
     },
     "outer_perimeter": {
       "description": "Outer Edge / TWS (0, 14)",
-      "sampleSize": 19298,
-      "avgOppScore": 34.1,
-      "penaltyDeltaVsCenter": -0.1,
-      "bingoProbability": 19.3,
-      "blowout70Probability": 11.9
+      "sampleSize": 24250,
+      "avgOppScore": 34.4,
+      "penaltyDeltaVsCenter": -0.2,
+      "bingoProbability": 19.6,
+      "blowout70Probability": 12.1
     },
     "sub_perimeter": {
       "description": "Sub-Perimeter Buffer (1, 13)",
-      "sampleSize": 13689,
-      "avgOppScore": 34.7,
-      "penaltyDeltaVsCenter": 0.6,
-      "bingoProbability": 20,
-      "blowout70Probability": 11.8
+      "sampleSize": 17107,
+      "avgOppScore": 35,
+      "penaltyDeltaVsCenter": 0.4,
+      "bingoProbability": 20.4,
+      "blowout70Probability": 12.1
     },
     "center": {
       "description": "Center Core (Rows/Cols 3-11)",
-      "sampleSize": 22715,
-      "avgOppScore": 34.1,
+      "sampleSize": 28137,
+      "avgOppScore": 34.6,
       "penaltyDeltaVsCenter": 0,
-      "bingoProbability": 20.5,
-      "blowout70Probability": 13.4
+      "bingoProbability": 21.1,
+      "blowout70Probability": 13.8
     },
     "mid_board": {
       "description": "Mid-Board (Rows/Cols 2, 12)",
-      "sampleSize": 8438,
-      "avgOppScore": 34,
-      "penaltyDeltaVsCenter": -0.1,
-      "bingoProbability": 19.3,
-      "blowout70Probability": 11.8
+      "sampleSize": 10518,
+      "avgOppScore": 34.5,
+      "penaltyDeltaVsCenter": -0.2,
+      "bingoProbability": 19.9,
+      "blowout70Probability": 12.3
     },
     "exchange_or_pass": {
       "description": "Exchanges & Passes",
-      "sampleSize": 1848,
-      "avgOppScore": 31.6,
-      "penaltyDeltaVsCenter": -2.6,
-      "bingoProbability": 17.9,
-      "blowout70Probability": 11.3
+      "sampleSize": 2500,
+      "avgOppScore": 31.5,
+      "penaltyDeltaVsCenter": -3.2,
+      "bingoProbability": 18.1,
+      "blowout70Probability": 11.4
     }
   }
 }

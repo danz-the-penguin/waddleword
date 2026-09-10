@@ -6,7 +6,15 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "train": "node scripts/convert_gcg_to_training.js && node scripts/train_heuristics.js",
+    "download:gcg": "node scripts/download_gcgs.js",
+    "gaddag:nwl2023": "node scripts/build-gaddag.mjs ./data/lexicons/nwl2023.txt ./public/gaddag_nwl2023.bin",
+    "gaddag:csw24": "node scripts/build-gaddag.mjs ./data/lexicons/csw24.txt ./public/gaddag_csw24.bin",
+    "gaddag:csw21": "node scripts/build-gaddag.mjs ./data/lexicons/csw21.txt ./public/gaddag_csw21.bin",
+    "gaddag:twl06": "node scripts/build-gaddag.mjs ./data/lexicons/twl06.txt ./public/gaddag_twl06.bin",
+    "gaddag:sowpods": "node scripts/build-gaddag.mjs ./data/lexicons/sowpods.txt ./public/gaddag_sowpods.bin",
+    "gaddag:all": "npm run gaddag:nwl2023 && npm run gaddag:csw24 && npm run gaddag:csw21 && npm run gaddag:twl06 && npm run gaddag:sowpods"
   },
   "dependencies": {
     "localforage": "^1.10.0",
