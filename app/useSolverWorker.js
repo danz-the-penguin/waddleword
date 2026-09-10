@@ -37,6 +37,12 @@ export function useSolverWorker(
             resolveQueueRef.current(i, e.data.plays || [], e.data.jobId);
           }
         };
+        worker.onerror = (err) => {
+          console.error(`Solver worker ${i} error:`, err);
+          if (resolveQueueRef.current) {
+            resolveQueueRef.current(i, [], null);
+          }
+        };
         newWorkers.push(worker);
       }
       workersRef.current = newWorkers;
@@ -58,38 +64,54 @@ export function useSolverWorker(
     const numWorkers = workersRef.current.length;
     let completed = 0;
     let mergedPlays = [];
+    let isDone = false;
     
     const currentJobId = Date.now();
+
+    const finishSolving = () => {
+      mergedPlays.sort((a, b) => {
+        if (sortMode === "score") {
+          const sDiff = b.score - a.score;
+          return sDiff !== 0 ? sDiff : b.totalVal - a.totalVal;
+        } else {
+          const vDiff = b.totalVal - a.totalVal;
+          return Math.abs(vDiff) > 0.001 ? vDiff : b.score - a.score;
+        }
+      });
+      
+      const uniquePlays = [];
+      const seen = new Set();
+      for (let p of mergedPlays) {
+         const key = `${p.word}-${p.row}-${p.col}-${p.dir}`;
+         if (!seen.has(key)) {
+            seen.add(key);
+            uniquePlays.push(p);
+         }
+      }
+      
+      setCandidatePlays(uniquePlays.slice(0, 50));
+      setIsSolving(false);
+    };
+
+    // Safety fallback timeout to prevent UI freeze if OS terminates a worker thread
+    const safetyTimer = setTimeout(() => {
+      if (!isDone) {
+        isDone = true;
+        console.warn("Solver worker pool timeout reached, flushing available plays.");
+        finishSolving();
+      }
+    }, 7000);
+
     resolveQueueRef.current = (workerId, plays, jobId) => {
-       if (jobId !== currentJobId) return;
+       if (jobId && jobId !== currentJobId) return;
+       if (isDone) return;
        mergedPlays = mergedPlays.concat(plays);
        completed++;
        
-       if (completed === numWorkers) {
-          // Final Merge & Sort
-          mergedPlays.sort((a, b) => {
-            if (sortMode === "score") {
-              const sDiff = b.score - a.score;
-              return sDiff !== 0 ? sDiff : b.totalVal - a.totalVal;
-            } else {
-              const vDiff = b.totalVal - a.totalVal;
-              return Math.abs(vDiff) > 0.001 ? vDiff : b.score - a.score;
-            }
-          });
-          
-          // Dedup just in case (exchange moves)
-          const uniquePlays = [];
-          const seen = new Set();
-          for (let p of mergedPlays) {
-             const key = `${p.word}-${p.row}-${p.col}-${p.dir}`;
-             if (!seen.has(key)) {
-                seen.add(key);
-                uniquePlays.push(p);
-             }
-          }
-          
-          setCandidatePlays(uniquePlays.slice(0, 50)); // UI renders top 50
-          setIsSolving(false);
+       if (completed >= numWorkers) {
+          isDone = true;
+          clearTimeout(safetyTimer);
+          finishSolving();
        }
     };
     
@@ -110,6 +132,9 @@ export function useSolverWorker(
        });
     }
 
+    return () => {
+      clearTimeout(safetyTimer);
+    };
   }, [
     deferredBoard,
     deferredRack,

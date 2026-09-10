@@ -15,9 +15,9 @@ export function useDictionaryWorker() {
           setIsReady(true);
         } else if (e.data.type === "LOOKUP_RESULT") {
           const { word, definition } = e.data;
-          const cb = callbacksRef.current.get(word);
-          if (cb) {
-            cb(definition);
+          const cbs = callbacksRef.current.get(word);
+          if (cbs && cbs.length > 0) {
+            cbs.forEach(cb => cb(definition));
             callbacksRef.current.delete(word);
           }
         }
@@ -32,14 +32,16 @@ export function useDictionaryWorker() {
 
   const lookupWord = useCallback((word) => {
     return new Promise((resolve) => {
-      if (!workerRef.current || !isReady) {
+      if (!workerRef.current) {
         resolve(null);
         return;
       }
-      callbacksRef.current.set(word, resolve);
+      const existing = callbacksRef.current.get(word) || [];
+      existing.push(resolve);
+      callbacksRef.current.set(word, existing);
       workerRef.current.postMessage({ type: "LOOKUP", word });
     });
-  }, [isReady]);
+  }, []);
 
   return { isReady, lookupWord };
 }

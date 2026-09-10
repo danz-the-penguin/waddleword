@@ -6,6 +6,7 @@ const ASSETS_TO_CACHE = [
   '/gaddag_csw24.bin',
   '/synergy.json',
   '/synergy_trained.json',
+  '/dictionary_compact.json',
   '/mc_simulator.wgsl',
   '/solverWorker.js',
   '/dictionaryWorker.js'
@@ -40,11 +41,14 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   
   // PWA Caching Strategy:
-  // For massive static binary files, WGSL shaders, and Worker scripts, use Cache-First, falling back to Network.
-  // This guarantees offline availability and bypasses Vercel edge latency.
+  // For massive static binary files, dictionary JSONs, WGSL shaders, and Worker scripts,
+  // use Cache-First, falling back to Network.
+  // This guarantees instant offline availability and bypasses Vercel edge latency.
   if (
     url.pathname.endsWith('.bin') || 
-    url.pathname.endsWith('.wgsl')
+    url.pathname.endsWith('.wgsl') ||
+    url.pathname.endsWith('.json') ||
+    url.pathname.endsWith('Worker.js')
   ) {
     event.respondWith(
       caches.match(event.request).then((cachedResponse) => {

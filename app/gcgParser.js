@@ -9,6 +9,8 @@ export function parseGcgFile(fileContent) {
   let currentOwners = Array(15).fill(null).map(() => Array(15).fill(""));
   let p1Score = 0;
   let p2Score = 0;
+  let lastPlacedByP1 = [];
+  let lastPlacedByP2 = [];
   
   for (const line of lines) {
     if (line.startsWith("#player1")) {
@@ -17,62 +19,113 @@ export function parseGcgFile(fileContent) {
       player2 = line.split(" ")[1] || "Player 2";
     } else if (line.startsWith(">")) {
       const parts = line.split(/\s+/).filter(Boolean);
-      if (parts.length >= 5) {
-         const playerName = parts[0].substring(1, parts[0].length - 1);
+      if (parts.length >= 4) {
+         let rawName = parts[0];
+         if (rawName.startsWith(">")) rawName = rawName.substring(1);
+         if (rawName.endsWith(":")) rawName = rawName.substring(0, rawName.length - 1);
+         const playerName = rawName;
+
          if (!player1) player1 = playerName;
          if (!player2 && playerName !== player1) player2 = playerName;
          
-         const rack = parts[1];
-         const pos = parts[2];
-         let rawWord = parts[3];
-         const score = parseInt(parts[4]) || 0;
-         
          const isPlayer1 = playerName === player1;
-         if (isPlayer1) p1Score += score;
-         else p2Score += score;
-         
-         if (/[0-9]/.test(pos) && /[A-Za-z]/.test(pos)) {
-            let dir = "H";
-            let row = 0;
-            let col = 0;
-            
-            if (/[0-9]/.test(pos[0])) {
-               dir = "H";
-               const numMatch = pos.match(/[0-9]+/);
-               const letterMatch = pos.match(/[A-Za-z]+/);
-               row = parseInt(numMatch[0]) - 1;
-               col = letterMatch[0].toUpperCase().charCodeAt(0) - 65;
-            } else {
-               dir = "V";
-               const letterMatch = pos.match(/[A-Za-z]+/);
-               const numMatch = pos.match(/[0-9]+/);
-               col = letterMatch[0].toUpperCase().charCodeAt(0) - 65;
-               row = parseInt(numMatch[0]) - 1;
-            }
-            
-            let word = rawWord.replace(/[()]/g, '');
-            for (let i = 0; i < word.length; i++) {
-               const r = dir === "V" ? row + i : row;
-               const c = dir === "H" ? col + i : col;
-               if (r >= 0 && r < 15 && c >= 0 && c < 15) {
-                   if (currentBoard[r][c] === "") {
-                      let char = word[i];
-                      // Uppercase for regular, lowercase for blanks is standard in GCG.
-                      currentBoard[r][c] = char;
-                      currentOwners[r][c] = isPlayer1 ? "me" : "opp";
-                   }
-               }
-            }
+
+         // Check for endgame rack adjustment lines: >player: (XYZ) -10 350
+         if (parts.length === 4 && parts[1].startsWith("(") && parts[1].endsWith(")")) {
+            const rack = parts[1];
+            const score = parseInt(parts[2]) || 0;
+            if (isPlayer1) p1Score += score;
+            else p2Score += score;
+
+            history.push({
+              player: isPlayer1 ? "me" : "opp",
+              rack,
+              myScore: p1Score,
+              oppScore: p2Score,
+              board: currentBoard.map(row => [...row]),
+              tileOwners: currentOwners.map(row => [...row])
+            });
+            continue;
          }
-         
-         history.push({
-           player: isPlayer1 ? "me" : "opp",
-           rack,
-           myScore: p1Score,
-           oppScore: p2Score,
-           board: currentBoard.map(row => [...row]),
-           tileOwners: currentOwners.map(row => [...row])
-         });
+
+         if (parts.length >= 5) {
+           const rack = parts[1];
+           const pos = parts[2];
+           let rawWord = parts[3];
+           const score = parseInt(parts[4]) || 0;
+           
+           if (isPlayer1) p1Score += score;
+           else p2Score += score;
+
+           // Check for challenge takeback: pos === '--' or rawWord === '--'
+           if (pos === "--" || rawWord === "--") {
+             const toRevert = isPlayer1 ? lastPlacedByP1 : lastPlacedByP2;
+             for (const p of toRevert) {
+               currentBoard[p.r][p.c] = "";
+               currentOwners[p.r][p.c] = "";
+             }
+             if (isPlayer1) lastPlacedByP1 = [];
+             else lastPlacedByP2 = [];
+
+             history.push({
+               player: isPlayer1 ? "me" : "opp",
+               rack,
+               myScore: p1Score,
+               oppScore: p2Score,
+               board: currentBoard.map(row => [...row]),
+               tileOwners: currentOwners.map(row => [...row]),
+               isChallenge: true
+             });
+             continue;
+           }
+           
+           if (/[0-9]/.test(pos) && /[A-Za-z]/.test(pos)) {
+              let dir = "H";
+              let row = 0;
+              let col = 0;
+              
+              if (/[0-9]/.test(pos[0])) {
+                 dir = "H";
+                 const numMatch = pos.match(/[0-9]+/);
+                 const letterMatch = pos.match(/[A-Za-z]+/);
+                 row = parseInt(numMatch[0]) - 1;
+                 col = letterMatch[0].toUpperCase().charCodeAt(0) - 65;
+              } else {
+                 dir = "V";
+                 const letterMatch = pos.match(/[A-Za-z]+/);
+                 const numMatch = pos.match(/[0-9]+/);
+                 col = letterMatch[0].toUpperCase().charCodeAt(0) - 65;
+                 row = parseInt(numMatch[0]) - 1;
+              }
+              
+              let word = rawWord.replace(/[()]/g, '');
+              const newlyPlaced = [];
+              for (let i = 0; i < word.length; i++) {
+                 const r = dir === "V" ? row + i : row;
+                 const c = dir === "H" ? col + i : col;
+                 if (r >= 0 && r < 15 && c >= 0 && c < 15) {
+                     if (currentBoard[r][c] === "") {
+                        let char = word[i];
+                        // Uppercase for regular, lowercase for blanks is standard in GCG.
+                        currentBoard[r][c] = char;
+                        currentOwners[r][c] = isPlayer1 ? "me" : "opp";
+                        newlyPlaced.push({ r, c });
+                     }
+                 }
+              }
+              if (isPlayer1) lastPlacedByP1 = newlyPlaced;
+              else lastPlacedByP2 = newlyPlaced;
+           }
+           
+           history.push({
+             player: isPlayer1 ? "me" : "opp",
+             rack,
+             myScore: p1Score,
+             oppScore: p2Score,
+             board: currentBoard.map(row => [...row]),
+             tileOwners: currentOwners.map(row => [...row])
+           });
+         }
       }
     }
   }
