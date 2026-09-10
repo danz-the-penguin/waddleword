@@ -56,7 +56,7 @@ Whether analyzing historical Grandmaster `.gcg` tournament games, calculating co
 │  4. Monte Carlo Simulation Dispatch                        │
 │     ┌────────────────────────┐  ┌───────────────────────┐  │
 │     │  WebGPU Compute Shader │  │   CPU Fast Fallback   │  │
-│     │   (mc_simulator.wgsl)  │  │ (runCPUSimulations)  │  │
+│     │   (mc_simulator.wgsl)  │  │ (runCPUSimulations)   │  │
 │     │ 16,384 GPU rollout thr │  │ 128 rollouts/cand     │  │
 │     └────────────────────────┘  └───────────────────────┘  │
 └────────────────────────────────────────────────────────────┘
