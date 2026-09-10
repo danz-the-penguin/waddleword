@@ -1,0 +1,808 @@
+/* Windows 98 Classic Theme - Scrabble v3 */
+
+:root {
+  /* Win98 Core Palette */
+  --w98-desktop: #008080;
+  --w98-surface: #c0c0c0;
+  --w98-surface-inset: #ffffff;
+  --w98-text: #000000;
+  --w98-text-light: #ffffff;
+  --w98-border-light: #ffffff;
+  --w98-border-mid: #d4d0c8;
+  --w98-border-dark: #808080;
+  --w98-border-darker: #404040;
+  --w98-title-start: #000080;
+  --w98-title-end: #1084d0;
+  --w98-highlight: #000080;
+
+  /* Scrabble Board Colors */
+  --board-bg: #808080;
+  --board-container: #a0a0a0;
+  --cell-normal: #dcdcdc;
+  --cell-tile-bg: #ffebad;
+  --cell-selected: #ffffcc;
+  --cell-selected-border: #ff0000;
+  --cell-2L-bg: #a3c2e0;
+  --cell-2L-text: #1a365d;
+  --cell-3L-bg: #4b6fa6;
+  --cell-3L-text: #ffffff;
+  --cell-2W-bg: #e0a3a3;
+  --cell-2W-text: #742a2a;
+  --cell-3W-bg: #a64b4b;
+  --cell-3W-text: #ffffff;
+}
+
+/* HOYLE CLASSIC WOOD THEME OVERRIDES */
+/* When this class is applied to the root container, it overrides the default Win98 variables */
+.theme-hoyle {
+  --w98-desktop: #2E1B15; /* Deep Walnut */
+  --w98-surface: #D8D0C5; /* Warm Aged Parchment */
+  --w98-surface-inset: #F4EFEB; /* Brighter Paper */
+  --w98-title-start: #5D4037; /* Dark Leather Brown */
+  --w98-title-end: #8D6E63; /* Lighter Leather */
+  --w98-highlight: #4E342E; /* Rich Wood */
+  --board-bg: #4E342E;
+  --board-container: #8D6E63;
+  --cell-normal: #EFEBE9;
+  --cell-2L-bg: #BCAAA4;
+  --cell-2L-text: #3E2723;
+  --cell-3L-bg: #3E2723;
+  --cell-3L-text: #EFEBE9;
+  --cell-2W-bg: #E6A292;
+  --cell-2W-text: #4E342E;
+  --cell-3W-bg: #8E3B36;
+  --cell-3W-text: #ffffff;
+}
+
+@font-face {
+  font-family: "PixelSans";
+  src: local("MS Sans Serif"), local("Tahoma"), local("Arial");
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.win98-body {
+  background-color: var(--w98-desktop);
+  min-height: 100vh;
+  padding: 15px;
+  /* Use Tahoma/Verdana for crisp, readable UI text without anti-aliasing blur */
+  font-family: Tahoma, Verdana, Arial, sans-serif;
+  color: var(--w98-text);
+}
+
+.win98-container {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.win98-window {
+  box-sizing: border-box;
+  background-color: var(--w98-surface);
+  border: 2px solid;
+  border-color: var(--w98-border-light) var(--w98-border-dark)
+    var(--w98-border-dark) var(--w98-border-light);
+  box-shadow: 1px 1px 0px var(--w98-text);
+  padding: 3px;
+  margin-bottom: 16px;
+}
+
+.win98-titlebar {
+  background: linear-gradient(
+    90deg,
+    var(--w98-title-start),
+    var(--w98-title-end)
+  );
+  color: var(--w98-text-light);
+  padding: 3px 6px;
+  font-weight: bold;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+}
+
+.win98-content {
+  padding: 10px;
+}
+
+/* Main App Layout */
+.v3-layout {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 12px;
+}
+
+@media (max-width: 960px) {
+  .v3-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.win98-inset {
+  background-color: var(--w98-surface-inset);
+  border: 2px solid;
+  border-color: var(--w98-border-dark) var(--w98-border-light)
+    var(--w98-border-light) var(--w98-border-dark);
+  box-shadow: inset 1px 1px 0px var(--w98-text);
+  padding: 6px;
+}
+
+/* Interactive Grid Container */
+.board-grid-container {
+  display: flex;
+  justify-content: center;
+  overflow-x: auto;
+  padding: 8px;
+  background: var(--board-container);
+  /* Create a 3D sunken effect for the board tray */
+  box-shadow: inset 3px 3px 6px rgba(0, 0, 0, 0.6), inset -1px -1px 2px rgba(255, 255, 255, 0.2);
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 16x16 Interactive Grid */
+.board-grid {
+  display: grid;
+  grid-template-columns: 24px repeat(15, minmax(24px, 32px));
+  grid-template-rows: 24px repeat(15, minmax(24px, 32px));
+  gap: 2px;
+  background-color: var(--w98-border-darker);
+  border: 3px solid;
+  border-color: var(--w98-border-dark) var(--w98-border-light) var(--w98-border-light) var(--w98-border-dark);
+  padding: 3px;
+  box-shadow: inset 1px 1px 0px var(--w98-text);
+}
+
+/* Win98 Coordinate Headers (A-O, 1-15) */
+.board-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 11px;
+  color: var(--w98-text);
+  background-color: var(--w98-surface);
+  border: 1px solid;
+  border-color: var(--w98-border-light) var(--w98-border-dark)
+    var(--w98-border-dark) var(--w98-border-light);
+  user-select: none;
+}
+
+.board-cell {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 10px;
+  cursor: pointer;
+  user-select: none;
+  background-color: var(--cell-normal);
+  border: 1px solid var(--w98-border-dark);
+  box-shadow: inset 1px 1px 0px var(--w98-border-light);
+  text-transform: uppercase;
+  position: relative;
+}
+
+.board-cell:hover {
+  outline: 2px solid var(--w98-highlight);
+  z-index: 2;
+}
+
+.board-cell.selected {
+  outline: 2px solid var(--cell-selected-border);
+  z-index: 3;
+  background-color: var(--cell-selected);
+}
+
+/* Premium Board Cells */
+.cell-2L {
+  background-color: var(--cell-2L-bg);
+  color: var(--cell-2L-text);
+  font-size: 9px;
+}
+.cell-3L {
+  background-color: var(--cell-3L-bg);
+  color: var(--cell-3L-text);
+  font-size: 9px;
+}
+.cell-2W {
+  background-color: var(--cell-2W-bg);
+  color: var(--cell-2W-text);
+  font-size: 9px;
+}
+.cell-3W {
+  background-color: var(--cell-3W-bg);
+  color: var(--cell-3W-text);
+  font-size: 9px;
+}
+.cell-CENTER {
+  background-color: var(--cell-2W-bg);
+  color: var(--cell-2W-text);
+  font-size: 16px;
+}
+
+.cell-tile {
+  background-color: var(--cell-tile-bg);
+  color: #000000;
+  /* Use a heavy, classic font for game pieces to simulate physical ink */
+  font-family: "Arial Black", Arial, sans-serif;
+  font-size: 16px; /* Bump up font size for better readability */
+  border-top: 2px solid #ffffff;
+  border-left: 2px solid #ffffff;
+  border-bottom: 2px solid #a09470;
+  border-right: 2px solid #a09470;
+  font-size: 14px;
+  font-weight: bold;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  box-shadow: 1px 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+/* --- SCALED UP RACK TRAY & PHYSICAL TILES --- */
+.rack-tray {
+  display: flex;
+  gap: 6px;
+  min-height: 54px;
+  padding: 6px 8px;
+  background: linear-gradient(180deg, #8b5a2b 0%, #a67b5b 50%, #8b5a2b 100%);
+  border: 4px solid;
+  border-color: #5c3a1e #d4a373 #d4a373 #5c3a1e;
+  box-shadow: inset 2px 2px 5px #000000;
+  align-items: center;
+  overflow-x: auto;
+  margin-top: 6px;
+}
+
+.scrabble-tile-rack {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  /* Use a heavy, classic font for game pieces to simulate physical ink */
+  font-family: "Arial Black", Arial, sans-serif;
+  font-size: 16px; /* Bump up font size for better readability */
+  width: 38px;
+  height: 42px;
+  background-color: var(--cell-tile-bg);
+  border-top: 2px solid #ffffff;
+  border-left: 2px solid #ffffff;
+  border-bottom: 2px solid #a09470;
+  border-right: 2px solid #a09470;
+  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.6);
+  font-weight: bold;
+  font-size: 20px;
+  color: #000000;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.scrabble-tile-rack .tile-score-sub {
+  position: absolute;
+  bottom: 2px;
+  right: 3px;
+  font-size: 9px;
+  font-weight: normal;
+  line-height: 1;
+  color: #333333 !important;
+}
+
+/* --- SCALED UP RESULT CARD MINI TILES --- */
+.scrabble-tile-mini {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: 25px;
+  height: 28px;
+  background-color: var(--cell-tile-bg);
+  border-top: 1px solid #ffffff;
+  border-left: 1px solid #ffffff;
+  border-bottom: 2px solid #a09470;
+  border-right: 2px solid #a09470;
+  box-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+  font-weight: bold;
+  font-size: 14px;
+  color: #000000 !important;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.scrabble-tile-mini .tile-score-sub {
+  position: absolute;
+  bottom: 1px;
+  right: 2px;
+  font-size: 8px;
+  font-weight: normal;
+  line-height: 1;
+  color: #333333 !important;
+}
+
+/* Sidebar Controls & Inputs */
+.win98-input {
+  width: 100%;
+  padding: 4px;
+  font-size: 13px;
+  font-family: monospace;
+  /* Use the aged paper color instead of stark white for better theme cohesion */
+  background-color: var(--w98-surface-inset);
+  color: var(--w98-text);
+  font-weight: bold;
+  border: 2px solid;
+  border-color: var(--w98-border-dark) var(--w98-border-light)
+    var(--w98-border-light) var(--w98-border-dark);
+  box-shadow: inset 1px 1px 0px var(--w98-text);
+  text-transform: uppercase;
+  outline: none;
+}
+
+.win98-input:focus {
+  background-color: #f0f8ff;
+}
+
+.win98-button {
+  background-color: var(--w98-surface);
+  border: 2px solid;
+  border-color: var(--w98-border-light) var(--w98-border-dark)
+    var(--w98-border-dark) var(--w98-border-light);
+  box-shadow: 1px 1px 0px var(--w98-text);
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: bold;
+  cursor: pointer;
+  color: var(--w98-text);
+  user-select: none;
+}
+
+.win98-button:active {
+  border-color: var(--w98-border-dark) var(--w98-border-light)
+    var(--w98-border-light) var(--w98-border-dark);
+  padding: 5px 9px 3px 11px;
+  box-shadow: none;
+}
+
+.results-list {
+  /* Removed fixed max-height to let the results list dynamically fill the entire right column */
+  flex: 1;
+  height: 100%;
+  min-height: 400px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--w98-surface) var(--w98-border-mid);
+}
+
+/* Retro Scrollbars */
+::-webkit-scrollbar {
+  width: 16px;
+  height: 16px;
+}
+::-webkit-scrollbar-track {
+  background: var(--w98-border-mid);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--w98-surface);
+  border: 2px solid;
+  border-color: var(--w98-border-light) var(--w98-border-dark)
+    var(--w98-border-dark) var(--w98-border-light);
+  box-shadow: 1px 1px 0px var(--w98-text);
+}
+
+.result-card {
+  padding: 6px;
+  border-bottom: 1px dotted var(--w98-border-dark);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.result-card:hover {
+  background-color: var(--w98-highlight);
+  color: var(--w98-text-light);
+  outline: 1px dotted var(--w98-text-light);
+  outline-offset: -1px;
+}
+
+.result-card:hover * {
+  color: var(--w98-text-light) !important;
+}
+
+.result-card:hover .scrabble-tile-mini {
+  border-top: 1px solid #ffffff;
+  border-left: 1px solid #ffffff;
+  border-bottom: 2px solid #d4a373;
+  border-right: 2px solid #d4a373;
+}
+
+.result-card:hover .scrabble-tile-mini * {
+  color: #000000 !important;
+}
+
+.result-card:hover div[style*="color: rgb(0, 128, 0)"],
+.result-card:hover div[style*="color: #008000"] {
+  color: #55ff55 !important;
+}
+
+/* Badges */
+.badge-risk-high {
+  background: var(--cell-3W-bg);
+  color: var(--w98-text-light);
+  font-size: 9px;
+  padding: 2px 4px;
+  font-weight: bold;
+  display: inline-block;
+  margin-top: 2px;
+}
+
+.badge-risk-safe {
+  background: #2e8b57;
+  color: var(--w98-text-light);
+  font-size: 9px;
+  padding: 2px 4px;
+  font-weight: bold;
+  display: inline-block;
+  margin-top: 2px;
+}
+
+.badge-legal {
+  background-color: #2e7d32;
+  color: #ffffff;
+  font-size: 9px;
+  padding: 2px 4px;
+  font-weight: bold;
+}
+
+.badge-illegal {
+  background-color: #c62828;
+  color: #ffffff;
+  font-size: 9px;
+  padding: 2px 4px;
+  font-weight: bold;
+}
+
+.badge-dict-only {
+  background-color: #d97706;
+  color: #ffffff;
+  font-size: 9px;
+  padding: 2px 4px;
+  font-weight: bold;
+}
+
+/* Tooltip Window */
+.win98-tooltip {
+  position: fixed;
+  width: 280px;
+  max-width: 90vw;
+  z-index: 99999;
+  pointer-events: none;
+  box-shadow: 2px 2px 0px var(--w98-text);
+  margin-bottom: 0;
+}
+
+.win98-tooltip-content {
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  max-height: 150px;
+  overflow-y: auto;
+  white-space: normal;
+  word-break: break-word;
+}
+
+/* Opponent Reply Block */
+.opponent-reply-block {
+  font-size: 10px;
+  margin-top: 4px;
+  padding: 2px 4px;
+  background-color: var(--w98-surface);
+  border: 1px solid;
+  border-color: var(--w98-border-light) var(--w98-border-darker) var(--w98-border-darker) var(--w98-border-light);
+  color: var(--w98-text);
+  display: inline-block;
+  cursor: crosshair;
+}
+
+.opponent-reply-block:active {
+  border-color: var(--w98-border-darker) var(--w98-border-light) var(--w98-border-light) var(--w98-border-darker);
+}
+
+.cell-preview {
+  background-color: rgba(46, 125, 50, 0.45);
+  color: #ffffff;
+  border: 2px dashed #000080;
+  font-size: 14px;
+  font-weight: bold;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  opacity: 0.7;
+  backdrop-filter: blur(1px);
+  box-shadow: inset 1px 1px 3px rgba(0,0,0,0.5);
+}
+
+.cell-tile .tile-score-sub,
+.cell-preview .tile-score-sub {
+  position: absolute;
+  bottom: 1px;
+  right: 2px;
+  font-size: 8px;
+  font-weight: normal;
+  line-height: 1;
+  color: #333333;
+}
+
+.result-card:hover .opponent-reply-block {
+  background-color: #0000a0;
+  border-color: var(--w98-border-darker) var(--w98-border-light) var(--w98-border-light) var(--w98-border-darker);
+}
+
+/* Unseen Tiles Tracker */
+.unseen-pane {
+  margin-top: 10px;
+  width: 100%;
+  background-color: var(--w98-surface);
+  border: 2px solid;
+  border-color: var(--w98-border-dark) var(--w98-border-light) var(--w98-border-light) var(--w98-border-dark);
+  box-shadow: inset 1px 1px 0px var(--w98-text);
+  padding: 8px;
+}
+
+.unseen-header {
+  font-size: 11px;
+  font-weight: bold;
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--w98-border-dark);
+  padding-bottom: 4px;
+}
+
+.unseen-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+  gap: 4px;
+}
+
+.unseen-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  background-color: var(--w98-surface-inset);
+  border: 1px solid var(--w98-border-dark);
+  padding: 2px;
+  box-shadow: inset 1px 1px 0px var(--w98-border-light);
+  transition: opacity 0.2s ease, filter 0.2s ease;
+}
+
+.unseen-item.empty {
+  opacity: 0.4;
+  filter: grayscale(100%);
+  background-color: var(--w98-surface);
+  box-shadow: none;
+  border-color: var(--w98-border-mid);
+}
+
+.unseen-count {
+  font-size: 10px;
+  font-weight: bold;
+  font-family: monospace;
+}
+
+/* Rack Container Tweaks */
+.rack-container {
+  box-sizing: border-box;
+  width: 100%;
+  margin-bottom: 12px;
+  background-color: var(--board-container);
+  padding: 8px;
+  border: 2px solid;
+  border-color: var(--w98-border-darker) var(--w98-border-light) var(--w98-border-light) var(--w98-border-darker);
+  box-shadow: inset 3px 3px 6px rgba(0, 0, 0, 0.6), inset -1px -1px 2px rgba(255, 255, 255, 0.2);
+}
+
+.options-panel {
+  box-sizing: border-box;
+  width: 100%;
+  background-color: var(--w98-surface);
+  border: 2px solid;
+  border-color: var(--w98-border-light) var(--w98-border-dark) var(--w98-border-dark) var(--w98-border-light);
+  box-shadow: 1px 1px 0px var(--w98-text);
+  padding: 8px;
+  margin-bottom: 12px;
+}
+
+.options-panel-title {
+  font-size: 11px;
+  font-weight: bold;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Opponent Tile Style */
+.cell-tile-opponent { 
+  background-color: #ffcccc !important; 
+  border-bottom: 2px solid #cc0000 !important; 
+  border-right: 2px solid #cc0000 !important; 
+  color: #660000 !important; 
+}
+
+/* Win98 Status Bar */
+.win98-statusbar {
+  display: flex; 
+  gap: 4px; 
+  padding: 2px 4px; 
+  background: var(--w98-surface); 
+  border-top: 1px solid var(--w98-border-mid); 
+  margin-top: 8px; 
+  font-size: 11px;
+}
+.win98-statusbar > div {
+  border: 1px solid; 
+  border-color: var(--w98-border-dark) var(--w98-border-light) var(--w98-border-light) var(--w98-border-dark); 
+  padding: 2px 6px;
+}
+
+.win98-btn-sys {
+  padding: 0 4px;
+  font-size: 10px;
+  height: 14px;
+}
+.win98-btn-sys:active {
+  padding: 1px 3px 0px 5px !important;
+}
+
+/* Windows 98 Menu Bar Styling */
+.win98-menubar { 
+  display: flex; 
+  gap: 12px; 
+  padding: 2px 8px; 
+  border-bottom: 1px solid var(--w98-border-dark); 
+  background-color: var(--w98-surface); 
+  font-size: 11px; 
+}
+.menu-item { cursor: default; }
+.menu-item:hover { background-color: var(--w98-title-start); color: #fff; }
+
+/* Etched vertical separator to divide toolbar groups logically */
+.toolbar-separator { width: 2px; border-left: 1px solid var(--w98-border-dark); border-right: 1px solid var(--w98-border-light); margin: 0 4px; height: 20px; }
+
+/* Classic Windows 98 Fieldset Groupings */
+.win98-fieldset {
+  border: 2px solid;
+  border-color: var(--w98-border-light) var(--w98-border-darker) var(--w98-border-darker) var(--w98-border-light);
+  padding: 8px;
+  margin-bottom: 8px;
+}
+.win98-fieldset legend {
+  padding: 0 4px;
+}
+
+/* Def Button Mobile */
+.def-btn-mobile {
+  display: none;
+  background: var(--w98-bg);
+  border: 1px solid var(--w98-border-light);
+  border-bottom-color: var(--w98-border-dark);
+  border-right-color: var(--w98-border-dark);
+  font-size: 10px;
+  font-weight: bold;
+  cursor: pointer;
+  padding: 0 4px;
+  height: 18px;
+  margin-left: 4px;
+}
+.def-btn-mobile:active {
+  border: 1px solid var(--w98-border-dark);
+  border-bottom-color: var(--w98-border-light);
+  border-right-color: var(--w98-border-light);
+}
+
+/* ========================================================= */
+/* Mobile & Touchscreen UX Overrides */
+/* ========================================================= */
+@media (max-width: 768px), (pointer: coarse) {
+  .def-btn-mobile {
+    display: inline-block;
+  }
+
+  /* Increase core interactive elements to meet 44px min-height standard for touch */
+  .win98-button,
+  .win98-input,
+  select.win98-input {
+    min-height: 44px;
+    font-size: 14px !important;
+  }
+  
+  /* Make the main layout stack vertically instead of flex row */
+  .v3-layout {
+    flex-direction: column;
+  }
+
+  /* Right sidebar should take full width on mobile */
+  .v3-sidebar-right {
+    width: 100% !important;
+    max-width: 100% !important;
+    border-left: none;
+    border-top: 2px solid var(--w98-border-light);
+  }
+
+  /* Increase tile sizes for better tap targets and readability */
+  .scrabble-tile-rack {
+    width: 42px !important;
+    height: 42px !important;
+    font-size: 24px !important;
+  }
+  
+  .scrabble-tile-mini {
+    width: 18px !important;
+    height: 18px !important;
+    font-size: 12px !important;
+  }
+
+  /* Allow the board to overflow horizontally with smooth scrolling */
+  /* Prevent the board from shrinking or breaking the flex layout */
+  .board-grid-container {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 8px; /* Room for scrollbar */
+  }
+  
+  .board-grid {
+    min-width: 500px; /* Force the board to stay large enough to tap */
+  }
+
+  /* Ensure the tooltip can be dismissed by clicking anywhere */
+  .win98-tooltip {
+    pointer-events: auto !important; /* Allow touch on the tooltip to dismiss or scroll */
+  }
+}
+
+
+
+
+
+/* 3W Epicenter - Solid Deep Red */
+.cell-danger-3w-center {
+  background: #d32f2f !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.3) !important;
+  z-index: 1;
+}
+
+/* 3W Falloff - Flat Pinkish-Red */
+.cell-danger-3w-adj {
+  background: rgba(239, 83, 80, 0.75) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15) !important;
+}
+
+/* 2W Epicenter - Solid Vibrant Pink */
+.cell-danger-2w-center {
+  background: #e91e63 !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.3) !important;
+  z-index: 1;
+}
+
+/* 2W Falloff - Flat Soft Pink */
+.cell-danger-2w-adj {
+  background: rgba(244, 143, 177, 0.7) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15) !important;
+}
