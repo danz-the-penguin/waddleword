@@ -970,24 +970,25 @@ async function runGPUSimulations(
     const netSpread = play.netSpread;
 
     let volatilityAdjustment = 0;
-    if (oppScore > 32.0) {
-      const excess = oppScore - 32.0;
+    if (oppScore > 34.0) {
+      const excess = oppScore - 34.0;
       if (scoreDifferential > 30) {
         // Ruthlessly protect lead when leading by >30 pts
-        const leadMultiplier = 1.0 + Math.min(2.0, (scoreDifferential - 30) / 30.0);
-        volatilityAdjustment = excess * 0.8 * leadMultiplier;
+        const leadMultiplier = 1.0 + Math.min(1.5, (scoreDifferential - 30) / 40.0);
+        volatilityAdjustment = excess * 0.5 * leadMultiplier;
       } else if (scoreDifferential < -30) {
-        volatilityAdjustment = excess * 0.2;
+        volatilityAdjustment = excess * 0.1;
       } else {
-        volatilityAdjustment = excess * 0.5;
+        volatilityAdjustment = excess * 0.25;
       }
-    } else if (scoreDifferential > 30 && oppScore <= 26.0) {
-      volatilityAdjustment = -3.0; // Lockdown bonus when protecting lead
+    } else if (scoreDifferential > 30 && oppScore <= 28.0) {
+      volatilityAdjustment = -2.0; // Lockdown bonus when protecting lead
     }
 
-    const tacticalAdjustments = (play.totalVal || 0) - (play.score + (play.leaveEquity || 0));
+    // Clamp tactical adjustments to prevent over-penalization from swamping move score
+    const tacticalAdjustments = Math.max(-4.0, Math.min(4.0, (play.totalVal || 0) - (play.score + (play.leaveEquity || 0))));
     play.totalVal = Math.round(
-      (play.score + (play.leaveEquity || 0) + (netSpread * lambda) + tacticalAdjustments - volatilityAdjustment) * 10
+      (play.score + (play.leaveEquity || 0) + (netSpread * lambda * 0.4) + tacticalAdjustments - volatilityAdjustment) * 10
     ) / 10;
   }
 
@@ -1096,10 +1097,10 @@ function runCPUSimulations(finalPlays, unseenArray, totalUnseen, scoreDifferenti
 
       let simOppScore = 0;
       if (Math.random() < bingoProb) {
-        // Opponent executes a bingo! Accurately model 9x Triple-Triple or 4x Double-Double reachability
-        if (tripleTripleLanes > 0) {
+        // Opponent executes a bingo! Accurately model 9x/4x reachability (~8-12% of bingos reach open corridors)
+        if (tripleTripleLanes > 0 && Math.random() < 0.08) {
           simOppScore = 50 + (10 + rackFaceVal) * 9 * 0.65;
-        } else if (doubleDoubleLanes > 0) {
+        } else if (doubleDoubleLanes > 0 && Math.random() < 0.12) {
           simOppScore = 50 + (10 + rackFaceVal) * 4 * 0.75;
         } else {
           simOppScore = 50 + 16 + rackFaceVal * 1.1;
@@ -1135,31 +1136,32 @@ function runCPUSimulations(finalPlays, unseenArray, totalUnseen, scoreDifferenti
   }
 
   // Stage 8: Empirical Net-Spread & Lead-Dependent Volatility Integration
-  // Formula: TotalVal = Score + LeaveEquity + (NetSpread × λ) + TacticalDefAdjustments
+  // Formula: TotalVal = Score + LeaveEquity + (NetSpread × λ × 0.5) + TacticalDefAdjustments
   for (let i = 0; i < topN; i++) {
     const play = finalPlays[i];
     const oppScore = play.avgOppScore;
     const netSpread = play.netSpread;
 
     let volatilityAdjustment = 0;
-    if (oppScore > 32.0) {
-      const excess = oppScore - 32.0;
+    if (oppScore > 34.0) {
+      const excess = oppScore - 34.0;
       if (scoreDifferential > 30) {
         // Ruthlessly protect lead when leading by >30 pts
-        const leadMultiplier = 1.0 + Math.min(2.0, (scoreDifferential - 30) / 30.0);
-        volatilityAdjustment = excess * 0.8 * leadMultiplier;
+        const leadMultiplier = 1.0 + Math.min(1.5, (scoreDifferential - 30) / 40.0);
+        volatilityAdjustment = excess * 0.5 * leadMultiplier;
       } else if (scoreDifferential < -30) {
-        volatilityAdjustment = excess * 0.2;
+        volatilityAdjustment = excess * 0.1;
       } else {
-        volatilityAdjustment = excess * 0.5;
+        volatilityAdjustment = excess * 0.25;
       }
-    } else if (scoreDifferential > 30 && oppScore <= 26.0) {
-      volatilityAdjustment = -3.0; // Lockdown bonus when protecting lead
+    } else if (scoreDifferential > 30 && oppScore <= 28.0) {
+      volatilityAdjustment = -2.0; // Lockdown bonus when protecting lead
     }
 
-    const tacticalAdjustments = (play.totalVal || 0) - (play.score + (play.leaveEquity || 0));
+    // Clamp tactical adjustments to prevent over-penalization from swamping move score
+    const tacticalAdjustments = Math.max(-4.0, Math.min(4.0, (play.totalVal || 0) - (play.score + (play.leaveEquity || 0))));
     play.totalVal = Math.round(
-      (play.score + (play.leaveEquity || 0) + (netSpread * lambda) + tacticalAdjustments - volatilityAdjustment) * 10
+      (play.score + (play.leaveEquity || 0) + (netSpread * lambda * 0.4) + tacticalAdjustments - volatilityAdjustment) * 10
     ) / 10;
   }
 }
@@ -1629,7 +1631,6 @@ self.onmessage = async function (e) {
           if (c.type === 9) blocksTripleTriple = 1;
           else blocksDoubleDouble = 1;
         }
-      } else {
         let placesInsideCorridor = false;
         for (let ci = 0; ci < placedCount; ci++) {
           const pIdx = PLACED_CELLS[ci];
@@ -1640,16 +1641,8 @@ self.onmessage = async function (e) {
               placesInsideCorridor = true;
               break;
             }
-            if ((pc === c.line - 1 || pc === c.line + 1) && pr >= c.start && pr <= c.end) {
-              placesInsideCorridor = true;
-              break;
-            }
           } else {
             if (pr === c.line && pc >= c.start && pc <= c.end) {
-              placesInsideCorridor = true;
-              break;
-            }
-            if ((pr === c.line - 1 || pr === c.line + 1) && pc >= c.start && pc <= c.end) {
               placesInsideCorridor = true;
               break;
             }
@@ -1665,13 +1658,13 @@ self.onmessage = async function (e) {
 
     // UPGRADE 4: Continuous Risk Scaling & Tactical Rewards
     let defensivePenalty = 0;
-    if (exposes3W === 1) defensivePenalty += twsThreatWeight;
-    if (exposes2W === 1) defensivePenalty += 4.0; // Nerfed from 6.5
-    if (exposes3L === 1) defensivePenalty += 2.0; // Nerfed from 4.0
+    if (exposes3W === 1) defensivePenalty += Math.min(6.0, twsThreatWeight * 0.5);
+    if (exposes2W === 1) defensivePenalty += 1.5;
+    if (exposes3L === 1) defensivePenalty += 1.0;
 
-    // Stage 1 Multi-Multiplier Corridor Defense: Penalize moves that OPEN multi-multiplier corridors
-    if (opensTripleTriple === 1) defensivePenalty += 24.0;
-    if (opensDoubleDouble === 1) defensivePenalty += 12.0;
+    // Calibrated Multi-Multiplier Corridor Defense (Anchored against empirical tournament data)
+    if (opensTripleTriple === 1) defensivePenalty += 3.5;
+    if (opensDoubleDouble === 1) defensivePenalty += 1.2;
 
     // Stage 2 (Option 1B): Board-Wide Exposed TWS Lane Defense
     let blocksExposedTwsLane = 0;
@@ -2053,30 +2046,25 @@ self.onmessage = async function (e) {
       }
     }
 
-    // Apply Blank Consumption Surcharge (-14.0 pts)
-    if (maxNonBlankScore > -999) {
-      for (let i = 0; i < resultsCount; i++) {
-        const usedBlank = (RES_TACTICS[i] & (1 << 11)) !== 0;
-        if (usedBlank) {
-          const score = RES_SCORE[i];
-          const isBingo = (RES_TACTICS[i] & (1 << 12)) !== 0;
-          if (!isBingo && score < 50 && (score - maxNonBlankScore <= 15)) {
-            RES_TOTAL_VAL[i] -= 14.0;
-            RES_TACTICS[i] |= (1 << 9); // Bit 9: blankSurchargeApplied
-          }
-        }
-      }
-    }
-
-    // Boost non-blank plays within 15 points of the blank-burning play (+4.0 pts)
+    // Stage 7: Calibrated Blank Tile Retention Engine
+    // Note: Leave equity already accounts for the full +21.8 pt blank value.
+    // To avoid hoarding wildcards while bleeding turn score, we only apply a subtle
+    // tiebreaker (+1.5 pts) when a non-blank alternative achieves virtually identical score.
     if (maxBlankBurningScore > -999) {
       for (let i = 0; i < resultsCount; i++) {
         const usedBlank = (RES_TACTICS[i] & (1 << 11)) !== 0;
         if (!usedBlank) {
           const score = RES_SCORE[i];
-          if (maxBlankBurningScore - score <= 15) {
-            RES_TOTAL_VAL[i] += 4.0;
+          if (maxBlankBurningScore - score <= 2) {
+            RES_TOTAL_VAL[i] += 1.5;
             RES_TACTICS[i] |= (1 << 13); // Bit 13: blankPreserveBoosted
+          }
+        } else {
+          const score = RES_SCORE[i];
+          const isBingo = (RES_TACTICS[i] & (1 << 12)) !== 0;
+          if (!isBingo && score <= 18 && (score - maxNonBlankScore <= 2)) {
+            RES_TOTAL_VAL[i] -= 1.5;
+            RES_TACTICS[i] |= (1 << 9); // Bit 9: blankSurchargeApplied
           }
         }
       }

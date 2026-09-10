@@ -144,11 +144,13 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     var sim_opp_score: f32 = 0.0;
     if (roll < bingo_prob) {
-        // Opponent executes a bingo! Accurately model 9x Triple-Triple or 4x Double-Double reachability
-        if (triple_triple_lanes > 0u) {
+        rng_state = pcg_hash(rng_state);
+        let roll2 = f32(rng_state & 0xffffu) / 65535.0;
+        // Opponent executes a bingo! Accurately model 9x/4x reachability (~8-12% of bingos reach open corridors)
+        if (triple_triple_lanes > 0u && roll2 < 0.08) {
             // 9x Triple-Triple: 50 bonus + 9x base word score
             sim_opp_score = 50.0 + (10.0 + f32(rack_face_val)) * 9.0 * 0.65;
-        } else if (double_double_lanes > 0u) {
+        } else if (double_double_lanes > 0u && roll2 < 0.12) {
             // 4x Double-Double: 50 bonus + 4x base word score
             sim_opp_score = 50.0 + (10.0 + f32(rack_face_val)) * 4.0 * 0.75;
         } else {

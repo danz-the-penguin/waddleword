@@ -205,18 +205,8 @@ function train() {
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ?".split('');
   for (const char of alphabet) {
     const prior = baseSynergy[char] !== undefined ? baseSynergy[char] : 0;
-    const data = singleLetterCounts[char];
-
-    if (data && data.count > 0) {
-      const empiricalDelta = (data.total / data.count) - averageTurnScore;
-      const shrunk = (data.count * empiricalDelta + PRIOR_WEIGHT * prior) / (data.count + PRIOR_WEIGHT);
-      const maxVal = char === '?' ? 28.0 : 15.0;
-      const minVal = -20.0;
-      trainedWeights[char] = Math.round(Math.max(minVal, Math.min(maxVal, shrunk)) * 10) / 10;
-    } else {
-      // Fallback to grounded Quackle baseline
-      trainedWeights[char] = Math.round(prior * 10) / 10;
-    }
+    // Ground single-letter equities in Quackle baseline to preserve true long-term blank and consonant valuations
+    trainedWeights[char] = Math.round(prior * 10) / 10;
   }
 
   fs.writeFileSync(OUTPUT_FILE, JSON.stringify(trainedWeights, null, 2));
