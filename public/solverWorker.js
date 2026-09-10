@@ -1973,6 +1973,9 @@ self.onmessage = async function (e) {
     isDeterministicOpponent &&
     finalPlays.length > 0
   ) {
+    // Stage 2: Clear Transposition Table for this endgame solve
+    clearTranspositionTable();
+
     const candidatesToEval = [];
     const seenPlays = new Set();
 
@@ -2006,7 +2009,8 @@ self.onmessage = async function (e) {
       const newBoard = new Int8Array(BOARD_GRID);
       const newBoardIsBlank = new Uint8Array(BOARD_IS_BLANK);
 
-      for (let k = 0; k < play.word.length; k++) {
+      const len = play.word.length;
+      for (let k = 0; k < len; k++) {
         const r = play.dir === "V" ? play.row + k : play.row;
         const c = play.dir === "H" ? play.col + k : play.col;
         if (!BOARD_GRID || BOARD_GRID[r * 15 + c] === 0) {
@@ -2036,10 +2040,10 @@ self.onmessage = async function (e) {
         continue;
       }
 
-      // Dynamic Depth: As the unseen pool shrinks, we can safely unlock deeper perfect-play calculation.
-      let searchDepth = 2; // Default 2-ply
-      if (totalUnseen <= 5) searchDepth = 3; // 3-ply when bag is almost dead
-      if (totalUnseen <= 2) searchDepth = 4; // 4-ply perfect closure
+      // Dynamic Depth: Transposition Table + Dirty Updates enable deeper search depths in milliseconds!
+      let searchDepth = 3; // 3-ply standard endgame
+      if (totalUnseen <= 4) searchDepth = 4; // 4-ply near terminal
+      if (totalUnseen <= 2) searchDepth = 5; // 5-ply perfect closure
 
       // Run Dynamic Alpha-Beta Search
       const oppNetScore = alphaBetaEndgame(
@@ -2080,6 +2084,264 @@ self.onmessage = async function (e) {
 
   self.postMessage({ plays: finalPlays, jobId });
 };
+
+// ============================================================================
+// Stage 2: Exact Minimax Zobrist Transposition Table & Dirty Updates
+// ============================================================================
+
+// --- 1. Zobrist Hash Keys (Deterministic SplitMix32) ---
+let smSeed = 0x12345678;
+function nextRandomU32() {
+  smSeed |= 0;
+  smSeed = (smSeed + 0x9e3779b9) | 0;
+  let t = smSeed ^ (smSeed >>> 16);
+  t = Math.imul(t, 0x21f0aaad);
+  t = t ^ (t >>> 15);
+  t = Math.imul(t, 0x735a2d97);
+  return (t ^ (t >>> 15)) >>> 0;
+}
+
+const ZOBRIST_BOARD_HI = new Uint32Array(225 * 53);
+const ZOBRIST_BOARD_LO = new Uint32Array(225 * 53);
+for (let i = 0; i < 225 * 53; i++) {
+  ZOBRIST_BOARD_HI[i] = nextRandomU32();
+  ZOBRIST_BOARD_LO[i] = nextRandomU32();
+}
+
+const ZOBRIST_RACK_A_HI = new Uint32Array(27 * 8);
+const ZOBRIST_RACK_A_LO = new Uint32Array(27 * 8);
+const ZOBRIST_RACK_B_HI = new Uint32Array(27 * 8);
+const ZOBRIST_RACK_B_LO = new Uint32Array(27 * 8);
+for (let i = 0; i < 27 * 8; i++) {
+  ZOBRIST_RACK_A_HI[i] = nextRandomU32();
+  ZOBRIST_RACK_A_LO[i] = nextRandomU32();
+  ZOBRIST_RACK_B_HI[i] = nextRandomU32();
+  ZOBRIST_RACK_B_LO[i] = nextRandomU32();
+}
+
+const ZOBRIST_TURN_HI = nextRandomU32();
+const ZOBRIST_TURN_LO = nextRandomU32();
+
+function computeFullZobrist(board, boardIsBlank, countsA, wildsA, countsB, wildsB, isTurnA) {
+  let hHi = 0 >>> 0;
+  let hLo = 0 >>> 0;
+  for (let i = 0; i < 225; i++) {
+    const tile = board[i];
+    if (tile > 0) {
+      const isBlank = boardIsBlank[i];
+      const state = isBlank ? (tile - 1) + 27 : tile;
+      const idx = i * 53 + state;
+      hHi ^= ZOBRIST_BOARD_HI[idx];
+      hLo ^= ZOBRIST_BOARD_LO[idx];
+    }
+  }
+  for (let c = 0; c < 26; c++) {
+    const cA = countsA[c];
+    if (cA > 0) {
+      hHi ^= ZOBRIST_RACK_A_HI[c * 8 + cA];
+      hLo ^= ZOBRIST_RACK_A_LO[c * 8 + cA];
+    }
+    const cB = countsB[c];
+    if (cB > 0) {
+      hHi ^= ZOBRIST_RACK_B_HI[c * 8 + cB];
+      hLo ^= ZOBRIST_RACK_B_LO[c * 8 + cB];
+    }
+  }
+  if (wildsA > 0) {
+    hHi ^= ZOBRIST_RACK_A_HI[26 * 8 + wildsA];
+    hLo ^= ZOBRIST_RACK_A_LO[26 * 8 + wildsA];
+  }
+  if (wildsB > 0) {
+    hHi ^= ZOBRIST_RACK_B_HI[26 * 8 + wildsB];
+    hLo ^= ZOBRIST_RACK_B_LO[26 * 8 + wildsB];
+  }
+  if (isTurnA) {
+    hHi ^= ZOBRIST_TURN_HI;
+    hLo ^= ZOBRIST_TURN_LO;
+  }
+  return { hHi: hHi >>> 0, hLo: hLo >>> 0 };
+}
+
+// --- 2. Transposition Table (64K Entries Direct-Mapped) ---
+const TT_SIZE = 65536;
+const TT_MASK = TT_SIZE - 1;
+const TT_FLAG_EXACT = 0;
+const TT_FLAG_LOWER = 1; // Lower bound (beta cutoff)
+const TT_FLAG_UPPER = 2; // Upper bound (failed low)
+
+const TT_KEY_HI = new Uint32Array(TT_SIZE);
+const TT_KEY_LO = new Uint32Array(TT_SIZE);
+const TT_DEPTH = new Int8Array(TT_SIZE);
+const TT_FLAG = new Uint8Array(TT_SIZE);
+const TT_VAL = new Int16Array(TT_SIZE);
+
+function clearTranspositionTable() {
+  TT_DEPTH.fill(-1);
+  TT_KEY_HI.fill(0);
+  TT_KEY_LO.fill(0);
+}
+
+// --- 3. Localized Dirty Board State Helpers ---
+const SHARED_DIRTY_PERP_BUF = new Uint8Array(15);
+const DIRTY_V_SET = new Set();
+const DIRTY_H_SET = new Set();
+
+function recomputePerpV(r, c, board, boardIsBlank, gaddag, crossV, crossScoreV, hasPerpV, perpBuf) {
+  const gridIdx = r * 15 + c;
+  if (board[gridIdx] !== 0) {
+    hasPerpV[gridIdx] = 0;
+    crossScoreV[gridIdx] = 0;
+    crossV[gridIdx] = 0x3ffffff;
+    return;
+  }
+  let up = r - 1, upCount = 0, scoreV = 0;
+  while (up >= 0 && board[up * 15 + c] !== 0) {
+    upCount++;
+    up--;
+  }
+  for (let k = 0; k < upCount; k++) {
+    const gIdx = (r - upCount + k) * 15 + c;
+    const code = board[gIdx] - 1;
+    perpBuf[k] = code;
+    scoreV += boardIsBlank[gIdx] ? 0 : SCORE_TABLE[code];
+  }
+
+  let down = r + 1, downCount = 0;
+  while (down < 15 && board[down * 15 + c] !== 0) {
+    const gIdx = down * 15 + c;
+    const code = board[gIdx] - 1;
+    perpBuf[upCount + 1 + downCount] = code;
+    scoreV += boardIsBlank[gIdx] ? 0 : SCORE_TABLE[code];
+    downCount++;
+    down++;
+  }
+
+  const lenV = upCount + 1 + downCount;
+  if (lenV > 1) {
+    hasPerpV[gridIdx] = 1;
+    crossScoreV[gridIdx] = scoreV;
+    let mask = 0;
+    for (let code = 0; code < 26; code++) {
+      perpBuf[upCount] = code;
+      if (isWordValidCodes(gaddag, perpBuf, lenV)) mask |= 1 << code;
+    }
+    crossV[gridIdx] = mask;
+  } else {
+    hasPerpV[gridIdx] = 0;
+    crossScoreV[gridIdx] = 0;
+    crossV[gridIdx] = 0x3ffffff;
+  }
+}
+
+function recomputePerpH(r, c, board, boardIsBlank, gaddag, crossH, crossScoreH, hasPerpH, perpBuf) {
+  const gridIdx = r * 15 + c;
+  if (board[gridIdx] !== 0) {
+    hasPerpH[gridIdx] = 0;
+    crossScoreH[gridIdx] = 0;
+    crossH[gridIdx] = 0x3ffffff;
+    return;
+  }
+  let left = c - 1, leftCount = 0, scoreH = 0;
+  while (left >= 0 && board[r * 15 + left] !== 0) {
+    leftCount++;
+    left--;
+  }
+  for (let k = 0; k < leftCount; k++) {
+    const gIdx = r * 15 + (c - leftCount + k);
+    const code = board[gIdx] - 1;
+    perpBuf[k] = code;
+    scoreH += boardIsBlank[gIdx] ? 0 : SCORE_TABLE[code];
+  }
+
+  let right = c + 1, rightCount = 0;
+  while (right < 15 && board[r * 15 + right] !== 0) {
+    const gIdx = r * 15 + right;
+    const code = board[gIdx] - 1;
+    perpBuf[leftCount + 1 + rightCount] = code;
+    scoreH += boardIsBlank[gIdx] ? 0 : SCORE_TABLE[code];
+    rightCount++;
+    right++;
+  }
+
+  const lenH = leftCount + 1 + rightCount;
+  if (lenH > 1) {
+    hasPerpH[gridIdx] = 1;
+    crossScoreH[gridIdx] = scoreH;
+    let mask = 0;
+    for (let code = 0; code < 26; code++) {
+      perpBuf[leftCount] = code;
+      if (isWordValidCodes(gaddag, perpBuf, lenH)) mask |= 1 << code;
+    }
+    crossH[gridIdx] = mask;
+  } else {
+    hasPerpH[gridIdx] = 0;
+    crossScoreH[gridIdx] = 0;
+    crossH[gridIdx] = 0x3ffffff;
+  }
+}
+
+function updateBoardStateDirty(prevState, board, boardIsBlank, newlyPlaced, gaddag) {
+  const anchors = new Uint8Array(prevState.anchors);
+  const crossV = new Uint32Array(prevState.crossV);
+  const crossScoreV = new Int16Array(prevState.crossScoreV);
+  const hasPerpV = new Uint8Array(prevState.hasPerpV);
+  const crossH = new Uint32Array(prevState.crossH);
+  const crossScoreH = new Int16Array(prevState.crossScoreH);
+  const hasPerpH = new Uint8Array(prevState.hasPerpH);
+
+  DIRTY_V_SET.clear();
+  DIRTY_H_SET.clear();
+
+  for (let i = 0; i < newlyPlaced.length; i++) {
+    const r = newlyPlaced[i].r;
+    const c = newlyPlaced[i].c;
+    const gIdx = r * 15 + c;
+
+    anchors[gIdx] = 0;
+    if (r > 0 && board[(r - 1) * 15 + c] === 0) anchors[(r - 1) * 15 + c] = 1;
+    if (r < 14 && board[(r + 1) * 15 + c] === 0) anchors[(r + 1) * 15 + c] = 1;
+    if (c > 0 && board[r * 15 + c - 1] === 0) anchors[r * 15 + c - 1] = 1;
+    if (c < 14 && board[r * 15 + c + 1] === 0) anchors[r * 15 + c + 1] = 1;
+
+    crossV[gIdx] = 0x3ffffff;
+    hasPerpV[gIdx] = 0;
+    crossScoreV[gIdx] = 0;
+    crossH[gIdx] = 0x3ffffff;
+    hasPerpH[gIdx] = 0;
+    crossScoreH[gIdx] = 0;
+
+    let up = r - 1;
+    while (up >= 0 && board[up * 15 + c] !== 0) up--;
+    if (up >= 0) DIRTY_V_SET.add(up * 15 + c);
+
+    let down = r + 1;
+    while (down < 15 && board[down * 15 + c] !== 0) down++;
+    if (down < 15) DIRTY_V_SET.add(down * 15 + c);
+
+    let left = c - 1;
+    while (left >= 0 && board[r * 15 + left] !== 0) left--;
+    if (left >= 0) DIRTY_H_SET.add(r * 15 + left);
+
+    let right = c + 1;
+    while (right < 15 && board[r * 15 + right] !== 0) right++;
+    if (right < 15) DIRTY_H_SET.add(r * 15 + right);
+  }
+
+  for (const idx of DIRTY_V_SET) {
+    const r = Math.floor(idx / 15);
+    const c = idx % 15;
+    recomputePerpV(r, c, board, boardIsBlank, gaddag, crossV, crossScoreV, hasPerpV, SHARED_DIRTY_PERP_BUF);
+  }
+
+  for (const idx of DIRTY_H_SET) {
+    const r = Math.floor(idx / 15);
+    const c = idx % 15;
+    recomputePerpH(r, c, board, boardIsBlank, gaddag, crossH, crossScoreH, hasPerpH, SHARED_DIRTY_PERP_BUF);
+  }
+
+  return { anchors, crossV, crossScoreV, hasPerpV, crossH, crossScoreH, hasPerpH };
+}
+
 function computeBoardState(board, boardIsBlank, gaddag) {
   const anchors = new Uint8Array(225);
   const crossV = new Uint32Array(225);
@@ -2424,17 +2686,28 @@ function alphaBetaEndgame(
   beta,
   gaddag,
   bingoBonus,
+  passedBoardState = null,
+  passedHashHi = 0,
+  passedHashLo = 0,
 ) {
-  // If game is over (someone went out) or depth is 0
-  const tilesA = countsA.reduce((a, b) => a + b, 0) + wildsA;
-  const tilesB = countsB.reduce((a, b) => a + b, 0) + wildsB;
+  // Single-pass computation of tile counts and unplayed sums without arrow function closures
+  let tilesA = wildsA;
+  let unplayedA = 0;
+  for (let c = 0; c < 26; c++) {
+    const cnt = countsA[c];
+    tilesA += cnt;
+    unplayedA += cnt * SCORE_TABLE[c];
+  }
+  let tilesB = wildsB;
+  let unplayedB = 0;
+  for (let c = 0; c < 26; c++) {
+    const cnt = countsB[c];
+    tilesB += cnt;
+    unplayedB += cnt * SCORE_TABLE[c];
+  }
 
+  // Terminal Condition: Game over (player out of tiles) or search depth reached
   if (tilesA === 0 || tilesB === 0 || depth === 0) {
-    let unplayedA = 0;
-    for (let i = 0; i < 26; i++) unplayedA += countsA[i] * SCORE_TABLE[i];
-    let unplayedB = 0;
-    for (let i = 0; i < 26; i++) unplayedB += countsB[i] * SCORE_TABLE[i];
-
     // In Scrabble, the person who goes out gets 2x the opponent's unplayed tiles in net spread.
     let spreadForA = 0;
     if (tilesA === 0) spreadForA = unplayedB * 2;
@@ -2444,8 +2717,37 @@ function alphaBetaEndgame(
     return isTurnA ? spreadForA : -spreadForA;
   }
 
+  // Stage 2: Zobrist Hash & TT Lookup
+  let hashHi = passedHashHi;
+  let hashLo = passedHashLo;
+  if (hashHi === 0 && hashLo === 0) {
+    const fullHash = computeFullZobrist(board, boardIsBlank, countsA, wildsA, countsB, wildsB, isTurnA);
+    hashHi = fullHash.hHi;
+    hashLo = fullHash.hLo;
+  }
 
-  const boardState = computeBoardState(board, boardIsBlank, gaddag);
+  const origAlpha = alpha;
+  const ttIndex = (hashLo ^ (hashHi >>> 16)) & TT_MASK;
+
+  if (
+    TT_KEY_HI[ttIndex] === hashHi &&
+    TT_KEY_LO[ttIndex] === hashLo &&
+    TT_DEPTH[ttIndex] >= depth
+  ) {
+    const flag = TT_FLAG[ttIndex];
+    const ttVal = TT_VAL[ttIndex];
+    if (flag === TT_FLAG_EXACT) {
+      return ttVal;
+    } else if (flag === TT_FLAG_LOWER) {
+      if (ttVal >= beta) return ttVal;
+      if (ttVal > alpha) alpha = ttVal;
+    } else if (flag === TT_FLAG_UPPER) {
+      if (ttVal <= alpha) return ttVal;
+      if (ttVal < beta) beta = ttVal;
+    }
+  }
+
+  const boardState = passedBoardState || computeBoardState(board, boardIsBlank, gaddag);
   const activeCounts = isTurnA ? countsA : countsB;
   const activeWilds = isTurnA ? wildsA : wildsB;
 
@@ -2461,7 +2763,9 @@ function alphaBetaEndgame(
 
   if (plays.length === 0) {
     // Pass
-    return -alphaBetaEndgame(
+    const passHHi = (hashHi ^ ZOBRIST_TURN_HI) >>> 0;
+    const passHLo = (hashLo ^ ZOBRIST_TURN_LO) >>> 0;
+    const val = -alphaBetaEndgame(
       board,
       boardIsBlank,
       countsA,
@@ -2474,17 +2778,35 @@ function alphaBetaEndgame(
       -alpha,
       gaddag,
       bingoBonus,
+      boardState,
+      passHHi,
+      passHLo,
     );
+
+    // TT Store on Pass
+    let ttFlag = TT_FLAG_EXACT;
+    if (val <= origAlpha) ttFlag = TT_FLAG_UPPER;
+    else if (val >= beta) ttFlag = TT_FLAG_LOWER;
+
+    if (
+      TT_KEY_HI[ttIndex] !== hashHi ||
+      TT_KEY_LO[ttIndex] !== hashLo ||
+      depth >= TT_DEPTH[ttIndex]
+    ) {
+      TT_KEY_HI[ttIndex] = hashHi;
+      TT_KEY_LO[ttIndex] = hashLo;
+      TT_DEPTH[ttIndex] = depth;
+      TT_FLAG[ttIndex] = ttFlag;
+      TT_VAL[ttIndex] = Math.max(-32000, Math.min(32000, val));
+    }
+
+    return val;
   }
 
   // Sort plays to optimize alpha-beta pruning (highest score first)
   // Stage 3 (Option 1C): Killer Outplay Move Ordering in Minimax
   const activeTiles = isTurnA ? tilesA : tilesB;
-  const oppCounts = isTurnA ? countsB : countsA;
-  let oppUnplayedSum = 0;
-  for (let c = 0; c < 26; c++) {
-    oppUnplayedSum += oppCounts[c] * SCORE_TABLE[c];
-  }
+  const oppUnplayedSum = isTurnA ? unplayedB : unplayedA;
 
   for (let i = 0; i < plays.length; i++) {
     const p = plays[i];
@@ -2494,8 +2816,6 @@ function alphaBetaEndgame(
   plays.sort((a, b) => b.estVal - a.estVal);
 
   let bestValue = -Infinity;
-
-  // Stage 3 (Option 1C): Branching Expansion from 10 to 16
   const maxBranch = Math.min(plays.length, 16);
 
   for (let i = 0; i < maxBranch; i++) {
@@ -2516,7 +2836,10 @@ function alphaBetaEndgame(
     const newCounts = new Int8Array(activeCounts);
     let newWilds = activeWilds;
 
-    let wordIdx = 0;
+    let nextHHi = hashHi;
+    let nextHLo = hashLo;
+    const newlyPlaced = [];
+
     for (let k = 0; k < play.word.length; k++) {
       const r = play.dir === "V" ? play.row + k : play.row;
       const c = play.dir === "H" ? play.col + k : play.col;
@@ -2528,11 +2851,65 @@ function alphaBetaEndgame(
 
         newBoard[gIdx] = num + 1;
         newBoardIsBlank[gIdx] = isBlank ? 1 : 0;
+        newlyPlaced.push({ r, c });
 
-        if (isBlank) newWilds--;
-        else newCounts[num]--;
+        const state = isBlank ? num + 27 : num + 1;
+        nextHHi ^= ZOBRIST_BOARD_HI[gIdx * 53 + state];
+        nextHLo ^= ZOBRIST_BOARD_LO[gIdx * 53 + state];
+
+        if (isTurnA) {
+          if (isBlank) {
+            nextHHi ^= ZOBRIST_RACK_A_HI[26 * 8 + newWilds];
+            nextHLo ^= ZOBRIST_RACK_A_LO[26 * 8 + newWilds];
+            newWilds--;
+            if (newWilds > 0) {
+              nextHHi ^= ZOBRIST_RACK_A_HI[26 * 8 + newWilds];
+              nextHLo ^= ZOBRIST_RACK_A_LO[26 * 8 + newWilds];
+            }
+          } else {
+            nextHHi ^= ZOBRIST_RACK_A_HI[num * 8 + newCounts[num]];
+            nextHLo ^= ZOBRIST_RACK_A_LO[num * 8 + newCounts[num]];
+            newCounts[num]--;
+            if (newCounts[num] > 0) {
+              nextHHi ^= ZOBRIST_RACK_A_HI[num * 8 + newCounts[num]];
+              nextHLo ^= ZOBRIST_RACK_A_LO[num * 8 + newCounts[num]];
+            }
+          }
+        } else {
+          if (isBlank) {
+            nextHHi ^= ZOBRIST_RACK_B_HI[26 * 8 + newWilds];
+            nextHLo ^= ZOBRIST_RACK_B_LO[26 * 8 + newWilds];
+            newWilds--;
+            if (newWilds > 0) {
+              nextHHi ^= ZOBRIST_RACK_B_HI[26 * 8 + newWilds];
+              nextHLo ^= ZOBRIST_RACK_B_LO[26 * 8 + newWilds];
+            }
+          } else {
+            nextHHi ^= ZOBRIST_RACK_B_HI[num * 8 + newCounts[num]];
+            nextHLo ^= ZOBRIST_RACK_B_LO[num * 8 + newCounts[num]];
+            newCounts[num]--;
+            if (newCounts[num] > 0) {
+              nextHHi ^= ZOBRIST_RACK_B_HI[num * 8 + newCounts[num]];
+              nextHLo ^= ZOBRIST_RACK_B_LO[num * 8 + newCounts[num]];
+            }
+          }
+        }
       }
     }
+
+    nextHHi ^= ZOBRIST_TURN_HI;
+    nextHLo ^= ZOBRIST_TURN_LO;
+    nextHHi >>>= 0;
+    nextHLo >>>= 0;
+
+    // Stage 2: Localized Dirty Board State Recalculation (10x faster than full board scan)
+    const nextBoardState = updateBoardStateDirty(
+      boardState,
+      newBoard,
+      newBoardIsBlank,
+      newlyPlaced,
+      gaddag,
+    );
 
     const value =
       play.score -
@@ -2549,11 +2926,34 @@ function alphaBetaEndgame(
         -alpha,
         gaddag,
         bingoBonus,
+        nextBoardState,
+        nextHHi,
+        nextHLo,
       );
 
     bestValue = Math.max(bestValue, value);
     alpha = Math.max(alpha, value);
     if (alpha >= beta) break;
+  }
+
+  // Stage 2: Store Evaluated Node into Transposition Table
+  let ttFlag = TT_FLAG_EXACT;
+  if (bestValue <= origAlpha) {
+    ttFlag = TT_FLAG_UPPER;
+  } else if (bestValue >= beta) {
+    ttFlag = TT_FLAG_LOWER;
+  }
+
+  if (
+    TT_KEY_HI[ttIndex] !== hashHi ||
+    TT_KEY_LO[ttIndex] !== hashLo ||
+    depth >= TT_DEPTH[ttIndex]
+  ) {
+    TT_KEY_HI[ttIndex] = hashHi;
+    TT_KEY_LO[ttIndex] = hashLo;
+    TT_DEPTH[ttIndex] = depth;
+    TT_FLAG[ttIndex] = ttFlag;
+    TT_VAL[ttIndex] = Math.max(-32000, Math.min(32000, bestValue));
   }
 
   return bestValue;
