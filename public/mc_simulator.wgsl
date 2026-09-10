@@ -112,9 +112,11 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         }
     }
 
-    // 3. Candidate board metrics: open TWS lanes and anchor density (Precomputed on host CPU)
-    let open_tws = candidate_metrics[candidate_idx * 2u];
-    let total_anchors = candidate_metrics[candidate_idx * 2u + 1u];
+    // 3. Candidate board metrics: open TWS lanes, anchor density, and multi-multiplier risk (Precomputed on host CPU)
+    let open_tws = candidate_metrics[candidate_idx * 4u + 0u];
+    let total_anchors = candidate_metrics[candidate_idx * 4u + 1u];
+    let triple_triple_lanes = candidate_metrics[candidate_idx * 4u + 2u];
+    let double_double_lanes = candidate_metrics[candidate_idx * 4u + 3u];
 
     // 4. Opponent Best Response Modeling
     var bingo_prob: f32 = 0.0;
@@ -130,7 +132,11 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         if (power_points >= 10u && blank_count == 0u) {
             bingo_prob = max(0.0, bingo_prob - 0.20);
         }
-        bingo_prob = clamp(bingo_prob, 0.0, 0.95);
+        // Boost bingo reachability when multi-multiplier corridors are wide open
+        if (triple_triple_lanes > 0u || double_double_lanes > 0u) {
+            bingo_prob = min(0.98, bingo_prob + 0.10);
+        }
+        bingo_prob = clamp(bingo_prob, 0.0, 0.98);
     }
 
     rng_state = pcg_hash(rng_state);
@@ -138,8 +144,17 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     var sim_opp_score: f32 = 0.0;
     if (roll < bingo_prob) {
-        // Opponent executes a 50-pt bingo
-        sim_opp_score = 50.0 + 16.0 + f32(rack_face_val) * 1.1;
+        // Opponent executes a bingo! Accurately model 9x Triple-Triple or 4x Double-Double reachability
+        if (triple_triple_lanes > 0u) {
+            // 9x Triple-Triple: 50 bonus + 9x base word score
+            sim_opp_score = 50.0 + (10.0 + f32(rack_face_val)) * 9.0 * 0.65;
+        } else if (double_double_lanes > 0u) {
+            // 4x Double-Double: 50 bonus + 4x base word score
+            sim_opp_score = 50.0 + (10.0 + f32(rack_face_val)) * 4.0 * 0.75;
+        } else {
+            // Standard 50-pt single-line bingo
+            sim_opp_score = 50.0 + 16.0 + f32(rack_face_val) * 1.1;
+        }
     } else {
         // Standard high-scoring play through anchor
         var base_score = 12.0 + f32(rack_face_val) * 0.65;

@@ -165,6 +165,103 @@ const ResultCard = React.memo(
                     ⚠️ VOWEL FLOOD
                   </span>
                 )}
+
+                {play.opensTripleTriple && (
+                  <span
+                    className="badge-illegal"
+                    style={{
+                      fontSize: "8px",
+                      padding: "1px 3px",
+                      backgroundColor: "#880e4f",
+                      color: "#ffffff",
+                      borderColor: "#ad1457",
+                      fontWeight: "bold",
+                    }}
+                    title="Critical Warning: Opens a 9x Triple-Triple corridor directly exposed to opponent bingos!"
+                  >
+                    ⚠️ RISK: 9X TWS
+                  </span>
+                )}
+
+                {play.opensDoubleDouble && (
+                  <span
+                    className="badge-illegal"
+                    style={{
+                      fontSize: "8px",
+                      padding: "1px 3px",
+                      backgroundColor: "#c2185b",
+                      color: "#ffffff",
+                      borderColor: "#e91e63",
+                    }}
+                    title="Warning: Opens a 4x Double-Double corridor exposed to high-scoring counter plays."
+                  >
+                    ⚠️ RISK: 4X DWS
+                  </span>
+                )}
+
+                {play.blocksTripleTriple && (
+                  <span
+                    className="badge-legal"
+                    style={{
+                      fontSize: "8px",
+                      padding: "1px 3px",
+                      backgroundColor: "#1b5e20",
+                      color: "#ffffff",
+                      borderColor: "#2e7d32",
+                    }}
+                    title="Defensive Masterplay: Blocks opponent access to a 9x Triple-Triple corridor!"
+                  >
+                    🛡️ BLOCKS 9X
+                  </span>
+                )}
+
+                {play.blocksDoubleDouble && (
+                  <span
+                    className="badge-legal"
+                    style={{
+                      fontSize: "8px",
+                      padding: "1px 3px",
+                      backgroundColor: "#2e7d32",
+                      color: "#ffffff",
+                      borderColor: "#388e3c",
+                    }}
+                    title="Defensive Play: Blocks opponent access to a 4x Double-Double corridor."
+                  >
+                    🛡️ BLOCKS 4X
+                  </span>
+                )}
+
+                {play.retainsBlank && (
+                  <span
+                    className="badge-legal"
+                    style={{
+                      fontSize: "8px",
+                      padding: "1px 3px",
+                      backgroundColor: "#0277bd",
+                      color: "#ffffff",
+                      borderColor: "#0288d1",
+                    }}
+                    title="Retains Blank (?) for future high-equity bingos."
+                  >
+                    💎 RETAIN BLANK
+                  </span>
+                )}
+
+                {play.blankSurchargeApplied && (
+                  <span
+                    className="badge-illegal"
+                    style={{
+                      fontSize: "8px",
+                      padding: "1px 3px",
+                      backgroundColor: "#d84315",
+                      color: "#ffffff",
+                      borderColor: "#ff5722",
+                    }}
+                    title="Blank Surcharge (-14): Expends a blank tile without scoring ≥ 50 pts or bingoing when non-blank moves are close in score."
+                  >
+                    BLANK SURCHARGE (-14)
+                  </span>
+                )}
               </>
             )}
           </div>

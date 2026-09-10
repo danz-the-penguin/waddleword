@@ -49,6 +49,7 @@ const HAS_PERP_GRID_H = new Uint8Array(225);
 const PERP_BUF = new Uint8Array(15);
 const PLACED_LETTERS = new Int8Array(15);
 const PLACED_IS_BLANK = new Uint8Array(15);
+const PLACED_CELLS = new Uint8Array(15);
 
 const LINE_TILES = new Int8Array(15);
 const LINE_ANCHORS = new Uint8Array(15);
@@ -68,7 +69,7 @@ const RES_TOTAL_VAL = new Float32Array(MAX_RESULTS);
 const RES_ROW = new Uint8Array(MAX_RESULTS);
 const RES_COL = new Uint8Array(MAX_RESULTS);
 const RES_DIR = new Uint8Array(MAX_RESULTS);
-const RES_TACTICS = new Uint8Array(MAX_RESULTS);
+const RES_TACTICS = new Uint16Array(MAX_RESULTS);
 const RES_LEAVE_CHARS = new Uint8Array(MAX_RESULTS * 7);
 const RES_LEAVE_LEN = new Uint8Array(MAX_RESULTS);
 
@@ -665,6 +666,25 @@ function findOpponentBestScore(
 
 // Note: Batched MCTS compute pass is handled entirely by runGPUSimulations
 
+// Multi-Multiplier High-Risk Corridors (9x Triple-Triple and 4x Double-Double)
+const MULTI_CORRIDORS = [
+  // 8 Triple-Triple (9x) Corridors
+  { name: "H_Row0_Left",   isVert: false, line: 0,  start: 0, end: 7,  type: 9, m1: 0,   m2: 7 },
+  { name: "H_Row0_Right",  isVert: false, line: 0,  start: 7, end: 14, type: 9, m1: 7,   m2: 14 },
+  { name: "H_Row14_Left",  isVert: false, line: 14, start: 0, end: 7,  type: 9, m1: 210, m2: 217 },
+  { name: "H_Row14_Right", isVert: false, line: 14, start: 7, end: 14, type: 9, m1: 217, m2: 224 },
+  { name: "V_Col0_Top",    isVert: true,  line: 0,  start: 0, end: 7,  type: 9, m1: 0,   m2: 105 },
+  { name: "V_Col0_Bottom", isVert: true,  line: 0,  start: 7, end: 14, type: 9, m1: 105, m2: 210 },
+  { name: "V_Col14_Top",   isVert: true,  line: 14, start: 0, end: 7,  type: 9, m1: 14,  m2: 119 },
+  { name: "V_Col14_Bottom",isVert: true,  line: 14, start: 7, end: 14, type: 9, m1: 119, m2: 224 },
+  
+  // 4 Prime Double-Double (4x) Corridors (Distance 6)
+  { name: "V_Col4_E5_E11",    isVert: true,  line: 4,  start: 4, end: 10, type: 4, m1: 64,  m2: 154 },
+  { name: "V_Col10_K5_K11",   isVert: true,  line: 10, start: 4, end: 10, type: 4, m1: 70,  m2: 160 },
+  { name: "H_Row4_E5_K5",     isVert: false, line: 4,  start: 4, end: 10, type: 4, m1: 64,  m2: 70 },
+  { name: "H_Row10_E11_K11",  isVert: false, line: 10, start: 4, end: 10, type: 4, m1: 154, m2: 160 }
+];
+
 // Stage 1: Fast Host Candidate Board Metric Computation
 const TWS_FLAT_INDICES = [0, 7, 14, 105, 119, 210, 217, 224];
 
@@ -714,7 +734,39 @@ function computeCandidateBoardMetrics(grid) {
       }
     }
   }
-  return { openTws, totalAnchors };
+
+  let tripleTripleLanes = 0;
+  let doubleDoubleLanes = 0;
+  for (let cIdx = 0; cIdx < MULTI_CORRIDORS.length; cIdx++) {
+    const c = MULTI_CORRIDORS[cIdx];
+    if (grid[c.m1] !== 0 && grid[c.m2] !== 0) continue; // Both multipliers neutralized
+    let emptyCount = 0;
+    let hasAnchor = false;
+    for (let p = c.start; p <= c.end; p++) {
+      const r = c.isVert ? p : c.line;
+      const col = c.isVert ? c.line : p;
+      const idx = r * 15 + col;
+      if (grid[idx] !== 0) {
+        hasAnchor = true;
+      } else {
+        emptyCount++;
+        if (
+          (r > 0 && grid[(r - 1) * 15 + col] !== 0) ||
+          (r < 14 && grid[(r + 1) * 15 + col] !== 0) ||
+          (col > 0 && grid[r * 15 + col - 1] !== 0) ||
+          (col < 14 && grid[r * 15 + col + 1] !== 0)
+        ) {
+          hasAnchor = true;
+        }
+      }
+    }
+    if (emptyCount <= 8 && hasAnchor) {
+      if (c.type === 9) tripleTripleLanes++;
+      else doubleDoubleLanes++;
+    }
+  }
+
+  return { openTws, totalAnchors, tripleTripleLanes, doubleDoubleLanes };
 }
 
 // Stage 1: Persistent WebGPU Staging Buffer Pool (Zero-Allocation Loop)
@@ -761,7 +813,7 @@ function ensureGpuBufferPool(device, pipeline) {
   });
 
   poolMetricsBuffer = device.createBuffer({
-    size: MAX_GPU_TOP_N * 2 * 4, // 128 bytes
+    size: MAX_GPU_TOP_N * 4 * 4, // 256 bytes (4 u32s per candidate)
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
   });
 
@@ -793,6 +845,7 @@ async function runGPUSimulations(
   unseenArray,
   totalUnseen,
   activeGaddag,
+  scoreDifferential = 0,
 ) {
   if (!gpuDevice || !gpuPipeline || !activeGaddag) return false;
 
@@ -810,7 +863,7 @@ async function runGPUSimulations(
   ]);
 
   const boardsData = new Uint32Array(topN * 225);
-  const metricsData = new Uint32Array(topN * 2);
+  const metricsData = new Uint32Array(topN * 4);
 
   for (let i = 0; i < topN; i++) {
     const play = finalPlays[i];
@@ -837,10 +890,14 @@ async function runGPUSimulations(
 
     // Stage 1: Pre-calculate candidate metrics once on CPU host
     const metrics = computeCandidateBoardMetrics(TEMP_BOARD_GRID);
-    metricsData[i * 2] = metrics.openTws;
-    metricsData[i * 2 + 1] = metrics.totalAnchors;
+    metricsData[i * 4 + 0] = metrics.openTws;
+    metricsData[i * 4 + 1] = metrics.totalAnchors;
+    metricsData[i * 4 + 2] = metrics.tripleTripleLanes;
+    metricsData[i * 4 + 3] = metrics.doubleDoubleLanes;
     play.openTws = metrics.openTws;
     play.totalAnchors = metrics.totalAnchors;
+    play.tripleTripleLanes = metrics.tripleTripleLanes;
+    play.doubleDoubleLanes = metrics.doubleDoubleLanes;
   }
 
   const unseenData = new Uint32Array(unseenArray);
@@ -898,11 +955,29 @@ async function runGPUSimulations(
     totalOppScoreSum += avgOppScore;
   }
 
-  // Option 2A Relative Defense Adjustment: Adjust candidate totalVal based on how well it defends compared to baseline
+  // Relative Defense & Absolute Volatility Penalties (Ruthlessly Protect Leads)
   const baselineOppScore = totalOppScoreSum / topN;
   for (let i = 0; i < topN; i++) {
     const deltaDefense = baselineOppScore - finalPlays[i].avgOppScore;
-    finalPlays[i].totalVal = Math.round((finalPlays[i].totalVal + deltaDefense) * 10) / 10;
+
+    let volatilityAdjustment = 0;
+    const oppScore = finalPlays[i].avgOppScore;
+    if (oppScore > 32.0) {
+      const excess = oppScore - 32.0;
+      if (scoreDifferential > 30) {
+        // Ruthlessly protect lead when leading by >30 pts
+        const leadMultiplier = 1.0 + Math.min(2.0, (scoreDifferential - 30) / 30.0);
+        volatilityAdjustment = excess * 0.8 * leadMultiplier;
+      } else if (scoreDifferential < -30) {
+        volatilityAdjustment = excess * 0.2;
+      } else {
+        volatilityAdjustment = excess * 0.5;
+      }
+    } else if (scoreDifferential > 30 && oppScore <= 26.0) {
+      volatilityAdjustment = -3.0; // Lockdown bonus when protecting lead
+    }
+
+    finalPlays[i].totalVal = Math.round((finalPlays[i].totalVal + deltaDefense - volatilityAdjustment) * 10) / 10;
   }
 
   poolReadBuffer.unmap();
@@ -912,7 +987,7 @@ async function runGPUSimulations(
 }
 
 // Lightweight CPU Monte Carlo Fallback (Option 2B)
-function runCPUSimulations(finalPlays, unseenArray, totalUnseen) {
+function runCPUSimulations(finalPlays, unseenArray, totalUnseen, scoreDifferential = 0) {
   finalPlays.sort((a, b) => b.totalVal - a.totalVal);
   const topN = Math.min(finalPlays.length, 16);
   const SIMS = 128;
@@ -946,6 +1021,8 @@ function runCPUSimulations(finalPlays, unseenArray, totalUnseen) {
     }
     const metrics = computeCandidateBoardMetrics(TEMP_BOARD_GRID);
     const hasOpenTws = metrics.openTws > 0 || play.opensTWS || play.exposes3W;
+    const tripleTripleLanes = metrics.tripleTripleLanes || 0;
+    const doubleDoubleLanes = metrics.doubleDoubleLanes || 0;
     const totalAnchors = metrics.totalAnchors;
 
     let sum = 0;
@@ -999,12 +1076,23 @@ function runCPUSimulations(finalPlays, unseenArray, totalUnseen) {
         if (powerPoints >= 10 && blankCount === 0) {
           bingoProb = Math.max(0, bingoProb - 0.20);
         }
-        bingoProb = Math.min(0.95, Math.max(0, bingoProb));
+        // Boost bingo reachability when multi-multiplier corridors are wide open
+        if (tripleTripleLanes > 0 || doubleDoubleLanes > 0) {
+          bingoProb = Math.min(0.98, bingoProb + 0.10);
+        }
+        bingoProb = Math.min(0.98, Math.max(0, bingoProb));
       }
 
       let simOppScore = 0;
       if (Math.random() < bingoProb) {
-        simOppScore = 50 + 16 + rackFaceVal * 1.1;
+        // Opponent executes a bingo! Accurately model 9x Triple-Triple or 4x Double-Double reachability
+        if (tripleTripleLanes > 0) {
+          simOppScore = 50 + (10 + rackFaceVal) * 9 * 0.65;
+        } else if (doubleDoubleLanes > 0) {
+          simOppScore = 50 + (10 + rackFaceVal) * 4 * 0.75;
+        } else {
+          simOppScore = 50 + 16 + rackFaceVal * 1.1;
+        }
       } else {
         let baseScore = 12 + rackFaceVal * 0.65;
         if (hasOpenTws) {
@@ -1035,11 +1123,29 @@ function runCPUSimulations(finalPlays, unseenArray, totalUnseen) {
     totalOppScoreSum += avgOppScore;
   }
 
-  // Option 2B Relative Defense Adjustment
+  // Relative Defense & Absolute Volatility Penalties (Ruthlessly Protect Leads)
   const baselineOppScore = totalOppScoreSum / topN;
   for (let i = 0; i < topN; i++) {
     const deltaDefense = baselineOppScore - finalPlays[i].avgOppScore;
-    finalPlays[i].totalVal = Math.round((finalPlays[i].totalVal + deltaDefense) * 10) / 10;
+
+    let volatilityAdjustment = 0;
+    const oppScore = finalPlays[i].avgOppScore;
+    if (oppScore > 32.0) {
+      const excess = oppScore - 32.0;
+      if (scoreDifferential > 30) {
+        // Ruthlessly protect lead when leading by >30 pts
+        const leadMultiplier = 1.0 + Math.min(2.0, (scoreDifferential - 30) / 30.0);
+        volatilityAdjustment = excess * 0.8 * leadMultiplier;
+      } else if (scoreDifferential < -30) {
+        volatilityAdjustment = excess * 0.2;
+      } else {
+        volatilityAdjustment = excess * 0.5;
+      }
+    } else if (scoreDifferential > 30 && oppScore <= 26.0) {
+      volatilityAdjustment = -3.0; // Lockdown bonus when protecting lead
+    }
+
+    finalPlays[i].totalVal = Math.round((finalPlays[i].totalVal + deltaDefense - volatilityAdjustment) * 10) / 10;
   }
 }
 
@@ -1365,6 +1471,38 @@ self.onmessage = async function (e) {
     }
   }
 
+  // Multi-Multiplier High-Risk Corridors (9x Triple-Triple and 4x Double-Double) Initial State
+  let initialExposedCorridorsMask = 0;
+  let hasExposedTripleTriple = false;
+  let hasExposedDoubleDouble = false;
+  for (let cIdx = 0; cIdx < MULTI_CORRIDORS.length; cIdx++) {
+    const c = MULTI_CORRIDORS[cIdx];
+    if (BOARD_GRID[c.m1] !== 0 && BOARD_GRID[c.m2] !== 0) continue;
+    let emptyCount = 0;
+    let hasAnchor = false;
+    for (let p = c.start; p <= c.end; p++) {
+      const r = c.isVert ? p : c.line;
+      const col = c.isVert ? c.line : p;
+      const idx = r * 15 + col;
+      if (BOARD_GRID[idx] !== 0) {
+        hasAnchor = true;
+      } else {
+        emptyCount++;
+        if (IS_ANCHOR_SQUARE[idx] === 1) hasAnchor = true;
+        const up = r > 0 && BOARD_GRID[(r - 1) * 15 + col] !== 0;
+        const dn = r < 14 && BOARD_GRID[(r + 1) * 15 + col] !== 0;
+        const lt = col > 0 && BOARD_GRID[r * 15 + col - 1] !== 0;
+        const rt = col < 14 && BOARD_GRID[r * 15 + col + 1] !== 0;
+        if (up || dn || lt || rt) hasAnchor = true;
+      }
+    }
+    if (emptyCount <= 8 && hasAnchor) {
+      initialExposedCorridorsMask |= (1 << cIdx);
+      if (c.type === 9) hasExposedTripleTriple = true;
+      else hasExposedDoubleDouble = true;
+    }
+  }
+
   const recordPlay = (startPos, endPos, rackUsed, isVertical, lineIdx) => {
     if (resultsCount >= MAX_RESULTS) return;
 
@@ -1379,6 +1517,7 @@ self.onmessage = async function (e) {
       crossWordsCount = 0;
     const charOffset = resultsCount * 15;
     let wordLen = 0;
+    let placedCount = 0;
 
     for (let k = 0; k < 26; k++) REMAINING_COUNTS[k] = RACK_COUNTS[k];
     let blanksLeft = wildcards;
@@ -1398,6 +1537,7 @@ self.onmessage = async function (e) {
       if (isExisting) {
         mainWordScore += BOARD_IS_BLANK[gIdx] ? 0 : SCORE_TABLE[charCode];
       } else {
+        PLACED_CELLS[placedCount++] = gIdx;
         let letterVal = isBlank ? 0 : SCORE_TABLE[charCode];
         if (premium === 1) letterVal *= 2;
         else if (premium === 2) letterVal *= 3;
@@ -1449,11 +1589,74 @@ self.onmessage = async function (e) {
       totalUnseen,
     );
 
+    // Multi-Multiplier High-Risk Corridor Evaluation (9x Triple-Triple and 4x Double-Double)
+    let opensTripleTriple = 0;
+    let opensDoubleDouble = 0;
+    let blocksTripleTriple = 0;
+    let blocksDoubleDouble = 0;
+
+    for (let cIdx = 0; cIdx < MULTI_CORRIDORS.length; cIdx++) {
+      const c = MULTI_CORRIDORS[cIdx];
+      const wasExposed = (initialExposedCorridorsMask & (1 << cIdx)) !== 0;
+
+      let placedOnM1 = false;
+      let placedOnM2 = false;
+      for (let ci = 0; ci < placedCount; ci++) {
+        const pIdx = PLACED_CELLS[ci];
+        if (pIdx === c.m1) placedOnM1 = true;
+        if (pIdx === c.m2) placedOnM2 = true;
+      }
+
+      if (wasExposed) {
+        if (placedOnM1 || placedOnM2) {
+          if (c.type === 9) blocksTripleTriple = 1;
+          else blocksDoubleDouble = 1;
+        }
+      } else {
+        let placesInsideCorridor = false;
+        for (let ci = 0; ci < placedCount; ci++) {
+          const pIdx = PLACED_CELLS[ci];
+          const pr = (pIdx / 15) | 0;
+          const pc = pIdx % 15;
+          if (c.isVert) {
+            if (pc === c.line && pr >= c.start && pr <= c.end) {
+              placesInsideCorridor = true;
+              break;
+            }
+            if ((pc === c.line - 1 || pc === c.line + 1) && pr >= c.start && pr <= c.end) {
+              placesInsideCorridor = true;
+              break;
+            }
+          } else {
+            if (pr === c.line && pc >= c.start && pc <= c.end) {
+              placesInsideCorridor = true;
+              break;
+            }
+            if ((pr === c.line - 1 || pr === c.line + 1) && pc >= c.start && pc <= c.end) {
+              placesInsideCorridor = true;
+              break;
+            }
+          }
+        }
+
+        if (placesInsideCorridor) {
+          if (c.type === 9) opensTripleTriple = 1;
+          else opensDoubleDouble = 1;
+        }
+      }
+    }
+
     // UPGRADE 4: Continuous Risk Scaling & Tactical Rewards
     let defensivePenalty = 0;
     if (exposes3W === 1) defensivePenalty += twsThreatWeight;
     if (exposes2W === 1) defensivePenalty += 4.0; // Nerfed from 6.5
     if (exposes3L === 1) defensivePenalty += 2.0; // Nerfed from 4.0
+
+    // Stage 1 Multi-Multiplier Corridor Defense
+    if (opensTripleTriple === 1) defensivePenalty += 24.0;
+    if (opensDoubleDouble === 1) defensivePenalty += 12.0;
+    if (hasExposedTripleTriple && blocksTripleTriple === 0) defensivePenalty += 10.0;
+    if (hasExposedDoubleDouble && blocksDoubleDouble === 0) defensivePenalty += 5.0;
 
     // Stage 2 (Option 1B): Board-Wide Exposed TWS Lane Defense & Risk
     let blocksExposedTwsLane = 0;
@@ -1493,6 +1696,8 @@ self.onmessage = async function (e) {
     if (blocksDWS === 1) tacticalBonus += 5.0; 
     if (crossWordsCount >= 2) tacticalBonus += 3.5;
     if (blocksExposedTwsLane === 1) tacticalBonus += 6.0; // Option 1B: reward sealing exposed TWS lanes
+    if (blocksTripleTriple === 1) tacticalBonus += 8.0;
+    if (blocksDoubleDouble === 1) tacticalBonus += 5.0;
     
     // Option 1A: Turnover Bonus - Only reward cycling when the bag has tiles to replenish!
     if (totalUnseen > 14 && rackUsed >= 4 && rackUsed <= 6) {
@@ -1538,6 +1743,10 @@ self.onmessage = async function (e) {
       }
     }
 
+    const isBingo = rackUsed === 7 ? 1 : 0;
+    const usedBlank = (initialWildcards > 0 && blanksLeft < initialWildcards) ? 1 : 0;
+    const retainsBlank = (initialWildcards > 0 && blanksLeft === initialWildcards) ? 1 : 0;
+
     RES_WORD_LEN[resultsCount] = wordLen;
     RES_SCORE[resultsCount] = totalScore;
     RES_EQUITY[resultsCount] = leaveEquity;
@@ -1546,7 +1755,19 @@ self.onmessage = async function (e) {
     RES_ROW[resultsCount] = isVertical ? startPos : lineIdx;
     RES_COL[resultsCount] = isVertical ? lineIdx : startPos;
     RES_DIR[resultsCount] = isVertical ? 1 : 0;
-    RES_TACTICS[resultsCount] = (exposes3W) | (opensTWS << 1) | (blocksDWS << 2) | ((crossWordsCount >= 2 ? 1 : 0) << 3) | (blocksExposedTwsLane << 4);
+    RES_TACTICS[resultsCount] =
+      (exposes3W) |
+      (opensTWS << 1) |
+      (blocksDWS << 2) |
+      ((crossWordsCount >= 2 ? 1 : 0) << 3) |
+      (blocksExposedTwsLane << 4) |
+      (opensTripleTriple << 5) |
+      (opensDoubleDouble << 6) |
+      (blocksTripleTriple << 7) |
+      (blocksDoubleDouble << 8) |
+      (retainsBlank << 10) |
+      (usedBlank << 11) |
+      (isBingo << 12);
 
     resultsCount++;
   };
@@ -1779,9 +2000,43 @@ self.onmessage = async function (e) {
             blocksDWS: false,
             isHotSpot: false,
             blocksExposedTwsLane: 0,
+            opensTripleTriple: false,
+            opensDoubleDouble: false,
+            blocksTripleTriple: false,
+            blocksDoubleDouble: false,
+            blankSurchargeApplied: false,
+            retainsBlank: keptBlanks > 0,
             baseScore: 0,
             defPenalty: 0,
           };
+        }
+      }
+    }
+  }
+
+  // Stage 1: Blank Consumption Surcharge
+  // Deduct -14.0 equity if candidate play expends a blank without scoring >= 50 or bingoing,
+  // when a non-blank alternative is within 15 points
+  if (initialWildcards > 0) {
+    let maxNonBlankScore = -999;
+    for (let i = 0; i < resultsCount; i++) {
+      if ((RES_TACTICS[i] & (1 << 11)) === 0) {
+        if (RES_SCORE[i] > maxNonBlankScore) {
+          maxNonBlankScore = RES_SCORE[i];
+        }
+      }
+    }
+
+    if (maxNonBlankScore > -999) {
+      for (let i = 0; i < resultsCount; i++) {
+        const usedBlank = (RES_TACTICS[i] & (1 << 11)) !== 0;
+        if (usedBlank) {
+          const score = RES_SCORE[i];
+          const isBingo = (RES_TACTICS[i] & (1 << 12)) !== 0;
+          if (!isBingo && score < 50 && (score - maxNonBlankScore <= 15)) {
+            RES_TOTAL_VAL[i] -= 14.0;
+            RES_TACTICS[i] |= (1 << 9); // Bit 9: blankSurchargeApplied
+          }
         }
       }
     }
@@ -1920,6 +2175,12 @@ self.onmessage = async function (e) {
       blocksDWS: (RES_TACTICS[idx] & 4) === 4,
       isHotSpot: (RES_TACTICS[idx] & 8) === 8,
       blocksExposedTwsLane: (RES_TACTICS[idx] & 16) === 16 ? 1 : 0,
+      opensTripleTriple: (RES_TACTICS[idx] & 32) === 32,
+      opensDoubleDouble: (RES_TACTICS[idx] & 64) === 64,
+      blocksTripleTriple: (RES_TACTICS[idx] & 128) === 128,
+      blocksDoubleDouble: (RES_TACTICS[idx] & 256) === 256,
+      blankSurchargeApplied: (RES_TACTICS[idx] & 512) === 512,
+      retainsBlank: (RES_TACTICS[idx] & 1024) === 1024,
       baseScore: RES_SCORE[idx],
       defPenalty: RES_SCORE[idx] + Math.round(RES_EQUITY[idx] * 10) / 10 - Math.round(totalValAdjusted * 10) / 10,
       oppBestReply,
@@ -1961,9 +2222,9 @@ self.onmessage = async function (e) {
     for (let j = 0; j < UNSEEN_COUNTS[26]; j++) unseenArray.push(26);
 
     if (gpuDevice) {
-      await runGPUSimulations(finalPlays, unseenArray, totalUnseen, gaddag);
+      await runGPUSimulations(finalPlays, unseenArray, totalUnseen, gaddag, scoreDifferential);
     } else {
-      runCPUSimulations(finalPlays, unseenArray, totalUnseen);
+      runCPUSimulations(finalPlays, unseenArray, totalUnseen, scoreDifferential);
     }
   }
 
