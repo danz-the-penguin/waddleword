@@ -665,6 +665,129 @@ function findOpponentBestScore(
 
 // Note: Batched MCTS compute pass is handled entirely by runGPUSimulations
 
+// Stage 1: Fast Host Candidate Board Metric Computation
+const TWS_FLAT_INDICES = [0, 7, 14, 105, 119, 210, 217, 224];
+
+function computeCandidateBoardMetrics(grid) {
+  let openTws = 0;
+  for (let t = 0; t < 8; t++) {
+    const twsIdx = TWS_FLAT_INDICES[t];
+    if (grid[twsIdx] === 0) {
+      const tr = Math.floor(twsIdx / 15);
+      const tc = twsIdx % 15;
+      let reachable = false;
+      const cStart = Math.max(0, tc - 7);
+      const cEnd = Math.min(14, tc + 7);
+      for (let c = cStart; c <= cEnd; c++) {
+        if (c !== tc && grid[tr * 15 + c] !== 0) {
+          reachable = true;
+          break;
+        }
+      }
+      if (!reachable) {
+        const rStart = Math.max(0, tr - 7);
+        const rEnd = Math.min(14, tr + 7);
+        for (let r = rStart; r <= rEnd; r++) {
+          if (r !== tr && grid[r * 15 + tc] !== 0) {
+            reachable = true;
+            break;
+          }
+        }
+      }
+      if (reachable) openTws++;
+    }
+  }
+
+  let totalAnchors = 0;
+  for (let r = 0; r < 15; r++) {
+    for (let c = 0; c < 15; c++) {
+      const gIdx = r * 15 + c;
+      if (grid[gIdx] === 0) {
+        if (
+          (r > 0 && grid[(r - 1) * 15 + c] !== 0) ||
+          (r < 14 && grid[(r + 1) * 15 + c] !== 0) ||
+          (c > 0 && grid[r * 15 + c - 1] !== 0) ||
+          (c < 14 && grid[r * 15 + c + 1] !== 0)
+        ) {
+          totalAnchors++;
+        }
+      }
+    }
+  }
+  return { openTws, totalAnchors };
+}
+
+// Stage 1: Persistent WebGPU Staging Buffer Pool (Zero-Allocation Loop)
+const MAX_GPU_TOP_N = 16;
+const SIMS_PER_CANDIDATE = 1024;
+let poolConfigBuffer = null;
+let poolBoardsBuffer = null;
+let poolUnseenBuffer = null;
+let poolMetricsBuffer = null;
+let poolSpreadBuffer = null;
+let poolReadBuffer = null;
+let poolBindGroup = null;
+let poolPipelineRef = null;
+
+function ensureGpuBufferPool(device, pipeline) {
+  if (poolBindGroup && poolPipelineRef === pipeline) return;
+
+  if (poolConfigBuffer) {
+    try {
+      poolConfigBuffer.destroy();
+      poolBoardsBuffer.destroy();
+      poolUnseenBuffer.destroy();
+      poolMetricsBuffer.destroy();
+      poolSpreadBuffer.destroy();
+      poolReadBuffer.destroy();
+    } catch (_) {}
+  }
+
+  poolPipelineRef = pipeline;
+
+  poolConfigBuffer = device.createBuffer({
+    size: 4 * 4, // 4 u32s
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+
+  poolBoardsBuffer = device.createBuffer({
+    size: MAX_GPU_TOP_N * 225 * 4, // 14,400 bytes
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+
+  poolUnseenBuffer = device.createBuffer({
+    size: 100 * 4, // 400 bytes
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+
+  poolMetricsBuffer = device.createBuffer({
+    size: MAX_GPU_TOP_N * 2 * 4, // 128 bytes
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+
+  const maxSpreadSize = MAX_GPU_TOP_N * SIMS_PER_CANDIDATE * 4; // 65,536 bytes
+  poolSpreadBuffer = device.createBuffer({
+    size: maxSpreadSize,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+  });
+
+  poolReadBuffer = device.createBuffer({
+    size: maxSpreadSize,
+    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+  });
+
+  poolBindGroup = device.createBindGroup({
+    layout: pipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: { buffer: poolConfigBuffer } },
+      { binding: 1, resource: { buffer: poolBoardsBuffer } },
+      { binding: 2, resource: { buffer: poolUnseenBuffer } },
+      { binding: 3, resource: { buffer: poolMetricsBuffer } },
+      { binding: 4, resource: { buffer: poolSpreadBuffer } },
+    ],
+  });
+}
+
 async function runGPUSimulations(
   finalPlays,
   unseenArray,
@@ -674,8 +797,10 @@ async function runGPUSimulations(
   if (!gpuDevice || !gpuPipeline || !activeGaddag) return false;
 
   finalPlays.sort((a, b) => b.totalVal - a.totalVal);
-  const topN = Math.min(finalPlays.length, 16); // Widen MCTS candidate pool
-  const SIMS_PER_CANDIDATE = 1024;
+  const topN = Math.min(finalPlays.length, MAX_GPU_TOP_N);
+  if (topN === 0 || totalUnseen <= 0) return false;
+
+  ensureGpuBufferPool(gpuDevice, gpuPipeline);
 
   const configData = new Uint32Array([
     topN,
@@ -683,13 +808,10 @@ async function runGPUSimulations(
     totalUnseen,
     Math.floor(Math.random() * 0xffffffff),
   ]);
-  const configBuffer = gpuDevice.createBuffer({
-    size: configData.byteLength,
-    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-  });
-  gpuDevice.queue.writeBuffer(configBuffer, 0, configData);
 
   const boardsData = new Uint32Array(topN * 225);
+  const metricsData = new Uint32Array(topN * 2);
+
   for (let i = 0; i < topN; i++) {
     const play = finalPlays[i];
     TEMP_BOARD_GRID.set(BOARD_GRID);
@@ -712,63 +834,44 @@ async function runGPUSimulations(
       boardsData[offset + j] =
         (TEMP_BOARD_IS_BLANK[j] << 8) | TEMP_BOARD_GRID[j];
     }
+
+    // Stage 1: Pre-calculate candidate metrics once on CPU host
+    const metrics = computeCandidateBoardMetrics(TEMP_BOARD_GRID);
+    metricsData[i * 2] = metrics.openTws;
+    metricsData[i * 2 + 1] = metrics.totalAnchors;
+    play.openTws = metrics.openTws;
+    play.totalAnchors = metrics.totalAnchors;
   }
 
-  const boardsBuffer = gpuDevice.createBuffer({
-    size: boardsData.byteLength,
-    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-  });
-  gpuDevice.queue.writeBuffer(boardsBuffer, 0, boardsData);
-
   const unseenData = new Uint32Array(unseenArray);
-  const unseenBuffer = gpuDevice.createBuffer({
-    size: unseenData.byteLength,
-    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-  });
-  gpuDevice.queue.writeBuffer(unseenBuffer, 0, unseenData);
 
-  // Phase 3: Allocate output buffer for EVERY thread (topN * 1024 floats)
-  const spreadBufferSize = topN * SIMS_PER_CANDIDATE * 4;
-  const spreadBuffer = gpuDevice.createBuffer({
-    size: spreadBufferSize,
-    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
-  });
-
-  const readBuffer = gpuDevice.createBuffer({
-    size: spreadBufferSize,
-    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
-  });
-
-  const bindGroup = gpuDevice.createBindGroup({
-    layout: gpuPipeline.getBindGroupLayout(0),
-    entries: [
-      { binding: 0, resource: { buffer: configBuffer } },
-      { binding: 1, resource: { buffer: boardsBuffer } },
-      { binding: 2, resource: { buffer: unseenBuffer } },
-      { binding: 4, resource: { buffer: spreadBuffer } },
-    ],
-  });
+  // Write directly into the persistent buffer pool (0 allocation)
+  gpuDevice.queue.writeBuffer(poolConfigBuffer, 0, configData);
+  gpuDevice.queue.writeBuffer(poolBoardsBuffer, 0, boardsData);
+  gpuDevice.queue.writeBuffer(poolUnseenBuffer, 0, unseenData);
+  gpuDevice.queue.writeBuffer(poolMetricsBuffer, 0, metricsData);
 
   const commandEncoder = gpuDevice.createCommandEncoder();
   const passEncoder = commandEncoder.beginComputePass();
   passEncoder.setPipeline(gpuPipeline);
-  passEncoder.setBindGroup(0, bindGroup);
+  passEncoder.setBindGroup(0, poolBindGroup);
 
   const totalInvocations = topN * SIMS_PER_CANDIDATE;
   passEncoder.dispatchWorkgroups(Math.ceil(totalInvocations / 64));
   passEncoder.end();
 
+  const spreadBytes = totalInvocations * 4;
   commandEncoder.copyBufferToBuffer(
-    spreadBuffer,
+    poolSpreadBuffer,
     0,
-    readBuffer,
+    poolReadBuffer,
     0,
-    spreadBufferSize,
+    spreadBytes,
   );
   gpuDevice.queue.submit([commandEncoder.finish()]);
 
-  await readBuffer.mapAsync(GPUMapMode.READ);
-  const resultArray = new Float32Array(readBuffer.getMappedRange());
+  await poolReadBuffer.mapAsync(GPUMapMode.READ, 0, spreadBytes);
+  const resultArray = new Float32Array(poolReadBuffer.getMappedRange(0, spreadBytes));
 
   // CPU Reduction of the 1024 threads per candidate
   let totalOppScoreSum = 0;
@@ -802,13 +905,8 @@ async function runGPUSimulations(
     finalPlays[i].totalVal = Math.round((finalPlays[i].totalVal + deltaDefense) * 10) / 10;
   }
 
-  readBuffer.unmap();
-  readBuffer.destroy(); // Fix Memory Leak
-
-  configBuffer.destroy();
-  boardsBuffer.destroy();
-  unseenBuffer.destroy();
-  spreadBuffer.destroy();
+  poolReadBuffer.unmap();
+  // Persistent pool buffers remain alive for zero-allocation reuse!
 
   return true;
 }
@@ -836,6 +934,20 @@ function runCPUSimulations(finalPlays, unseenArray, totalUnseen) {
   let totalOppScoreSum = 0;
   for (let i = 0; i < topN; i++) {
     const play = finalPlays[i];
+    TEMP_BOARD_GRID.set(BOARD_GRID);
+    if (play.dir !== "EXCH") {
+      for (let k = 0; k < play.word.length; k++) {
+        const r = play.dir === "V" ? play.row + k : play.row;
+        const c = play.dir === "H" ? play.col + k : play.col;
+        const charCode = play.word.charCodeAt(k);
+        const num = charCode >= 97 ? charCode - 97 : charCode - 65;
+        TEMP_BOARD_GRID[r * 15 + c] = num + 1;
+      }
+    }
+    const metrics = computeCandidateBoardMetrics(TEMP_BOARD_GRID);
+    const hasOpenTws = metrics.openTws > 0 || play.opensTWS || play.exposes3W;
+    const totalAnchors = metrics.totalAnchors;
+
     let sum = 0;
     let wins = 0;
     const ourSpreadBaseline = play.score + (play.leaveEquity || 0);
@@ -876,9 +988,8 @@ function runCPUSimulations(finalPlays, unseenArray, totalUnseen) {
         }
       }
 
-      const hasOpenTws = play.opensTWS || play.exposes3W;
       let bingoProb = 0.0;
-      if (drawCount === 7) {
+      if (drawCount === 7 && totalAnchors >= 4) {
         bingoProb = 0.12 + blankCount * 0.35 + sCount * 0.18;
         if ((vowelCount === 3 && consonantCount === 4) || (vowelCount === 4 && consonantCount === 3)) {
           bingoProb += 0.15;

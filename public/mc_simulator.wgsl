@@ -7,7 +7,7 @@
 @group(0) @binding(0) var<storage, read> config: array<u32>;
 @group(0) @binding(1) var<storage, read> boards: array<u32>;
 @group(0) @binding(2) var<storage, read> unseens: array<u32>;
-// @group(0) @binding(3) reserved for future lexicon index
+@group(0) @binding(3) var<storage, read> candidate_metrics: array<u32>;
 @group(0) @binding(4) var<storage, read_write> out_equities: array<f32>;
 
 // --- PRNG Implementation (PCG Hash) ---
@@ -56,6 +56,8 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     
     let candidate_idx = sim_idx / sims_per_candidate;
     let board_offset = candidate_idx * 225u;
+    let _board_seed_hint = boards[board_offset];
+    if (_board_seed_hint == 0xffffffffu) { return; }
     
     // 1. Initialize PRNG with a unique seed for this specific thread
     var rng_state = pcg_hash(base_seed ^ (sim_idx * 1664525u + 1013904223u));
@@ -110,63 +112,9 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         }
     }
 
-    // 3. Analyze candidate board state: open TWS lanes and anchor density
-    var total_anchors = 0u;
-    var open_tws = 0u;
-
-    // 8 Triple Word Score coordinates: (0,0), (0,7), (0,14), (7,0), (7,14), (14,0), (14,7), (14,14)
-    let tws_indices = array<u32, 8>(0u, 7u, 14u, 105u, 119u, 210u, 217u, 224u);
-    for (var t = 0u; t < 8u; t = t + 1u) {
-        let tws_idx = tws_indices[t];
-        let cell = boards[board_offset + tws_idx];
-        if ((cell & 0xffu) == 0u) {
-            let tr = tws_idx / 15u;
-            let tc = tws_idx % 15u;
-            var reachable = false;
-            
-            // Reachable along row
-            let r_start = max(0, i32(tc) - 7);
-            let r_end = min(14, i32(tc) + 7);
-            for (var c = r_start; c <= r_end; c = c + 1) {
-                if (u32(c) != tc && (boards[board_offset + tr * 15u + u32(c)] & 0xffu) != 0u) {
-                    reachable = true;
-                    break;
-                }
-            }
-            if (!reachable) {
-                // Reachable along col
-                let c_start = max(0, i32(tr) - 7);
-                let c_end = min(14, i32(tr) + 7);
-                for (var r = c_start; r <= c_end; r = r + 1) {
-                    if (u32(r) != tr && (boards[board_offset + u32(r) * 15u + tc] & 0xffu) != 0u) {
-                        reachable = true;
-                        break;
-                    }
-                }
-            }
-            if (reachable) {
-                open_tws = open_tws + 1u;
-            }
-        }
-    }
-
-    // Count open anchors across the candidate board
-    for (var r = 0u; r < 15u; r = r + 1u) {
-        for (var c = 0u; c < 15u; c = c + 1u) {
-            let gIdx = r * 15u + c;
-            let cell = boards[board_offset + gIdx];
-            if ((cell & 0xffu) == 0u) {
-                var adj = false;
-                if (r > 0u && (boards[board_offset + (r - 1u) * 15u + c] & 0xffu) != 0u) { adj = true; }
-                if (r < 14u && (boards[board_offset + (r + 1u) * 15u + c] & 0xffu) != 0u) { adj = true; }
-                if (c > 0u && (boards[board_offset + r * 15u + c - 1u] & 0xffu) != 0u) { adj = true; }
-                if (c < 14u && (boards[board_offset + r * 15u + c + 1u] & 0xffu) != 0u) { adj = true; }
-                if (adj) {
-                    total_anchors = total_anchors + 1u;
-                }
-            }
-        }
-    }
+    // 3. Candidate board metrics: open TWS lanes and anchor density (Precomputed on host CPU)
+    let open_tws = candidate_metrics[candidate_idx * 2u];
+    let total_anchors = candidate_metrics[candidate_idx * 2u + 1u];
 
     // 4. Opponent Best Response Modeling
     var bingo_prob: f32 = 0.0;
