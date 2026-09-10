@@ -8,7 +8,9 @@ export function useScrabbleHistory(
   tileOwners, setTileOwners,
   myScore, setMyScore,
   oppScore, setOppScore,
-  setHoveredPlay
+  setHoveredPlay,
+  committedBoard, setCommittedBoard,
+  inputMode, setInputMode
 ) {
   const [past, setPast] = useState([]);
   const [future, setFuture] = useState([]);
@@ -18,6 +20,8 @@ export function useScrabbleHistory(
   const tileOwnersRef = useRef(tileOwners);
   const myScoreRef = useRef(myScore);
   const oppScoreRef = useRef(oppScore);
+  const committedBoardRef = useRef(committedBoard);
+  const inputModeRef = useRef(inputMode);
 
   useEffect(() => {
     boardRef.current = board;
@@ -25,7 +29,9 @@ export function useScrabbleHistory(
     tileOwnersRef.current = tileOwners;
     myScoreRef.current = myScore;
     oppScoreRef.current = oppScore;
-  }, [board, rack, tileOwners, myScore, oppScore]);
+    committedBoardRef.current = committedBoard;
+    inputModeRef.current = inputMode;
+  }, [board, rack, tileOwners, myScore, oppScore, committedBoard, inputMode]);
 
   const pushHistory = useCallback(() => {
     setPast((p) => [
@@ -36,6 +42,8 @@ export function useScrabbleHistory(
         tileOwners: clone2D(tileOwnersRef.current),
         myScore: myScoreRef.current,
         oppScore: oppScoreRef.current,
+        committedBoard: clone2D(committedBoardRef.current),
+        inputMode: inputModeRef.current,
       }
     ]);
     setFuture([]);
@@ -51,16 +59,24 @@ export function useScrabbleHistory(
         tileOwners: clone2D(tileOwnersRef.current),
         myScore: myScoreRef.current,
         oppScore: oppScoreRef.current,
+        committedBoard: clone2D(committedBoardRef.current),
+        inputMode: inputModeRef.current,
       }, ...f]);
       setBoard(clone2D(previous.board));
       setRack(previous.rack);
       setTileOwners(clone2D(previous.tileOwners));
       setMyScore(previous.myScore);
       setOppScore(previous.oppScore);
+      if (setCommittedBoard && previous.committedBoard) {
+        setCommittedBoard(clone2D(previous.committedBoard));
+      }
+      if (setInputMode && previous.inputMode) {
+        setInputMode(previous.inputMode);
+      }
       if (setHoveredPlay) setHoveredPlay(null);
       return p.slice(0, -1);
     });
-  }, [setBoard, setRack, setTileOwners, setMyScore, setOppScore, setHoveredPlay]);
+  }, [setBoard, setRack, setTileOwners, setMyScore, setOppScore, setCommittedBoard, setInputMode, setHoveredPlay]);
 
   const handleRedo = useCallback(() => {
     setFuture((f) => {
@@ -72,16 +88,24 @@ export function useScrabbleHistory(
         tileOwners: clone2D(tileOwnersRef.current),
         myScore: myScoreRef.current,
         oppScore: oppScoreRef.current,
+        committedBoard: clone2D(committedBoardRef.current),
+        inputMode: inputModeRef.current,
       }]);
       setBoard(clone2D(next.board));
       setRack(next.rack);
       setTileOwners(clone2D(next.tileOwners));
       setMyScore(next.myScore);
       setOppScore(next.oppScore);
+      if (setCommittedBoard && next.committedBoard) {
+        setCommittedBoard(clone2D(next.committedBoard));
+      }
+      if (setInputMode && next.inputMode) {
+        setInputMode(next.inputMode);
+      }
       if (setHoveredPlay) setHoveredPlay(null);
       return f.slice(1);
     });
-  }, [setBoard, setRack, setTileOwners, setMyScore, setOppScore, setHoveredPlay]);
+  }, [setBoard, setRack, setTileOwners, setMyScore, setOppScore, setCommittedBoard, setInputMode, setHoveredPlay]);
 
   return {
     past,

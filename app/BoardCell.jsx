@@ -7,6 +7,7 @@ const BoardCell = React.memo(
     c,
     dangerType,
     tileVal,
+    isUncommitted,
     previewChar,
     oppPreviewChar,
     premium,
@@ -35,8 +36,11 @@ const BoardCell = React.memo(
         : (scores?.[tileVal.toLowerCase()] ?? (TILE_SCORES[tileVal.toUpperCase()] || 0));
       renderTile = (
         <div
-          className={`cell-tile ${owner === "opp" ? "cell-tile-opponent" : ""}`}
-          style={{ color: isBlank ? "var(--w98-highlight)" : "" }}
+          className={`cell-tile ${owner === "opp" ? "cell-tile-opponent" : ""} ${isUncommitted ? "cell-tile-staged" : ""}`}
+          style={{
+            color: isBlank ? "var(--w98-highlight)" : "",
+            boxShadow: isUncommitted ? "inset 0 0 0 2px #008080" : undefined,
+          }}
         >
           {tileVal.toUpperCase()}
           <span className="tile-score-sub">{score}</span>

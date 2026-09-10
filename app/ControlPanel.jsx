@@ -36,6 +36,9 @@ export default function ControlPanel({
   onOppScoreChange,
   inputMode,
   onToggleInputMode,
+  stagedMoveEvaluation,
+  onCommitPlay,
+  onRevertPlay,
 }) {
   return (
     <div
@@ -325,70 +328,132 @@ export default function ControlPanel({
             padding: "4px 12px",
             width: "100%",
             backgroundColor: "var(--w98-bg)",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: "8px",
           }}
         >
-          <label
+          <div
             style={{
               display: "flex",
               alignItems: "center",
-              gap: "6px",
-              fontWeight: "bold",
-              backgroundColor:
-                inputMode === "me"
-                  ? "var(--w98-title-start)"
-                  : "transparent",
-              color: inputMode === "me" ? "#fff" : "inherit",
-              padding: "2px 6px",
+              gap: "10px",
+              flexWrap: "wrap",
             }}
           >
-            My Score:
-            <input
-              type="text"
-              inputMode="numeric"
-              className="win98-input"
-              style={{ width: "60px", textAlign: "right" }}
-              value={myScore}
-              onChange={(e) =>
-                onMyScoreChange(e.target.value.replace(/[^0-9]/g, ""))
-              }
-            />
-          </label>
-          <button
-            className="win98-button"
-            onClick={onToggleInputMode}
-            style={{
-              fontWeight: "bold",
-              color: inputMode === "opp" ? "#cc0000" : "inherit",
-            }}
-          >
-            {inputMode === "me"
-              ? "My Play 👤 (Alt+O)"
-              : "Opponent Play 👿 (Alt+O)"}
-          </button>
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              fontWeight: "bold",
-              backgroundColor:
-                inputMode === "opp" ? "#cc0000" : "transparent",
-              color: inputMode === "opp" ? "#fff" : "#cc0000",
-              padding: "2px 6px",
-            }}
-          >
-            Opponent Score:
-            <input
-              type="text"
-              inputMode="numeric"
-              className="win98-input"
-              style={{ width: "60px", textAlign: "right" }}
-              value={oppScore}
-              onChange={(e) =>
-                onOppScoreChange(e.target.value.replace(/[^0-9]/g, ""))
-              }
-            />
-          </label>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                fontWeight: "bold",
+                backgroundColor:
+                  inputMode === "me"
+                    ? "var(--w98-title-start)"
+                    : "transparent",
+                color: inputMode === "me" ? "#fff" : "inherit",
+                padding: "2px 6px",
+              }}
+            >
+              My Score:
+              <input
+                type="text"
+                inputMode="numeric"
+                className="win98-input"
+                style={{ width: "60px", textAlign: "right" }}
+                value={myScore}
+                onChange={(e) =>
+                  onMyScoreChange(e.target.value.replace(/[^0-9]/g, ""))
+                }
+              />
+            </label>
+            <button
+              className="win98-button"
+              onClick={onToggleInputMode}
+              style={{
+                fontWeight: "bold",
+                color: inputMode === "opp" ? "#cc0000" : "inherit",
+              }}
+            >
+              {inputMode === "me"
+                ? "My Play 👤 (Alt+O)"
+                : "Opponent Play 👿 (Alt+O)"}
+            </button>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                fontWeight: "bold",
+                backgroundColor:
+                  inputMode === "opp" ? "#cc0000" : "transparent",
+                color: inputMode === "opp" ? "#fff" : "#cc0000",
+                padding: "2px 6px",
+              }}
+            >
+              Opponent Score:
+              <input
+                type="text"
+                inputMode="numeric"
+                className="win98-input"
+                style={{ width: "60px", textAlign: "right" }}
+                value={oppScore}
+                onChange={(e) =>
+                  onOppScoreChange(e.target.value.replace(/[^0-9]/g, ""))
+                }
+              />
+            </label>
+          </div>
+
+          {/* Staged Move Live Detection & Action HUD */}
+          {stagedMoveEvaluation ? (
+            stagedMoveEvaluation.isValid ? (
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <button
+                  className="win98-button"
+                  onClick={onCommitPlay}
+                  style={{
+                    backgroundColor: "#d4eed4",
+                    color: "#006600",
+                    fontWeight: "bold",
+                    padding: "2px 8px",
+                  }}
+                  title="Commit play to board and record score (Enter)"
+                >
+                  ✔ Commit {stagedMoveEvaluation.word} (+{stagedMoveEvaluation.score} pts) [Enter]
+                </button>
+                <button
+                  className="win98-button"
+                  onClick={onRevertPlay}
+                  style={{ padding: "2px 6px" }}
+                  title="Revert staged uncommitted tiles (Esc)"
+                >
+                  ✖ Cancel [Esc]
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <span
+                  style={{
+                    fontSize: "11px",
+                    color: "#cc0000",
+                    fontWeight: "bold",
+                  }}
+                >
+                  ⚠ {stagedMoveEvaluation.reason}
+                </span>
+                <button
+                  className="win98-button"
+                  onClick={onRevertPlay}
+                  style={{ padding: "2px 6px" }}
+                  title="Clear invalid staged tiles (Esc)"
+                >
+                  ✖ Clear [Esc]
+                </button>
+              </div>
+            )
+          ) : null}
         </div>
       </div>
     </div>

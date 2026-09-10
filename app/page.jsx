@@ -22,6 +22,7 @@ import { useSolverWorker } from "./useSolverWorker";
 import { parseGcgFile } from "./gcgParser";
 import { useDictionaryWorker } from "./useDictionaryWorker";
 import { playTileClack, playWin98Chord } from "./soundEffects";
+import { calculateBoardMoveScore } from "./scrabbleScorer";
 
 // Modularized components extracted in Stage 5
 import MenuBar from "./MenuBar";
@@ -81,6 +82,12 @@ export default function WaddleWord() {
       .map(() => Array(15).fill("")),
   );
 
+  const [committedBoard, setCommittedBoard] = useState(() =>
+    Array(15)
+      .fill(null)
+      .map(() => Array(15).fill("")),
+  );
+
   const [tileOwners, setTileOwners] = useState(() =>
     Array(15)
       .fill(null)
@@ -91,6 +98,10 @@ export default function WaddleWord() {
 
   const activePreset =
     BOARD_PRESETS[activePresetKey] || BOARD_PRESETS.plato_literati;
+
+  const stagedMoveEvaluation = useMemo(() => {
+    return calculateBoardMoveScore(board, committedBoard, activePreset);
+  }, [board, committedBoard, activePreset]);
 
   const [showHeatmap, setShowHeatmap] = useState(false);
   const dangerSquares = useMemo(() => {
@@ -190,6 +201,10 @@ export default function WaddleWord() {
     oppScore,
     setOppScore,
     setHoveredPlay,
+    committedBoard,
+    setCommittedBoard,
+    inputMode,
+    setInputMode,
   );
 
   const scoreDifferential = (Number(myScore) || 0) - (Number(oppScore) || 0);
@@ -286,7 +301,10 @@ export default function WaddleWord() {
     reader.onload = (event) => {
       try {
         const parsed = JSON.parse(event.target.result);
-        if (parsed.board) setBoard(parsed.board);
+        if (parsed.board) {
+          setBoard(parsed.board);
+          setCommittedBoard(parsed.committedBoard || parsed.board);
+        }
         if (parsed.tileOwners) setTileOwners(parsed.tileOwners);
         if (parsed.rack) setRack(parsed.rack);
         if (parsed.past) setPast(parsed.past);
@@ -304,6 +322,7 @@ export default function WaddleWord() {
   };
 
   const boardRef = useRef(board);
+  const committedBoardRef = useRef(committedBoard);
   const selectedCellRef = useRef(selectedCell);
   const inputModeRef = useRef(inputMode);
   const mobileInputRef = useRef(null);
@@ -312,9 +331,15 @@ export default function WaddleWord() {
   const blankPromptRef = useRef(null);
   const typingDirRef = useRef(typingDir);
   const isBoardLockedRef = useRef(isBoardLocked);
+  const activePresetRef = useRef(activePreset);
+  const rackRef = useRef(rack);
+
+  const commitCurrentPlayRef = useRef(null);
+  const revertUncommittedTilesRef = useRef(null);
 
   useEffect(() => {
     boardRef.current = board;
+    committedBoardRef.current = committedBoard;
     selectedCellRef.current = selectedCell;
     inputModeRef.current = inputMode;
     tileOwnersRef.current = tileOwners;
@@ -322,7 +347,21 @@ export default function WaddleWord() {
     blankPromptRef.current = blankPrompt;
     typingDirRef.current = typingDir;
     isBoardLockedRef.current = isBoardLocked;
-  }, [board, selectedCell, inputMode, tileOwners, candidatePlays, blankPrompt, typingDir, isBoardLocked]);
+    activePresetRef.current = activePreset;
+    rackRef.current = rack;
+  }, [
+    board,
+    committedBoard,
+    selectedCell,
+    inputMode,
+    tileOwners,
+    candidatePlays,
+    blankPrompt,
+    typingDir,
+    isBoardLocked,
+    activePreset,
+    rack,
+  ]);
 
   useEffect(() => {
     const findNextTargetCell = (b, startR, startC, dir) => {
@@ -371,6 +410,34 @@ export default function WaddleWord() {
       if (e.altKey && e.code === "KeyO") {
         e.preventDefault();
         setInputMode((m) => (m === "me" ? "opp" : "me"));
+        return;
+      }
+
+      if (e.key === "Enter") {
+        if (
+          document.activeElement &&
+          document.activeElement.tagName === "INPUT" &&
+          document.activeElement.id !== "hidden-board-input"
+        )
+          return;
+        e.preventDefault();
+        commitCurrentPlayRef.current?.();
+        return;
+      }
+
+      if (e.key === "Escape") {
+        if (
+          document.activeElement &&
+          document.activeElement.tagName === "INPUT" &&
+          document.activeElement.id !== "hidden-board-input"
+        )
+          return;
+        e.preventDefault();
+        if (blankPromptRef.current) {
+          setBlankPrompt(null);
+          return;
+        }
+        revertUncommittedTilesRef.current?.();
         return;
       }
 
@@ -529,10 +596,111 @@ export default function WaddleWord() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleUndo, pushHistory]);
 
+  const commitCurrentPlay = useCallback(() => {
+    const currentBoard = boardRef.current;
+    const currentCommitted = committedBoardRef.current;
+    const currentPreset = activePresetRef.current;
+    const moveRes = calculateBoardMoveScore(
+      currentBoard,
+      currentCommitted,
+      currentPreset,
+    );
+
+    if (!moveRes || !moveRes.isValid) return;
+
+    pushHistory();
+    const isOpp = inputModeRef.current === "opp";
+    const addedScore = moveRes.score;
+
+    if (!isOpp) {
+      setMyScore((prev) =>
+        ((parseInt(prev, 10) || 0) + addedScore).toString(),
+      );
+      setInputMode("opp");
+
+      setRack((prevRack) => {
+        let currentRack = prevRack.toUpperCase().split("");
+        for (let r = 0; r < 15; r++) {
+          for (let c = 0; c < 15; c++) {
+            if (currentBoard[r][c] && !currentCommitted[r][c]) {
+              const char = currentBoard[r][c];
+              const isBlank = char >= "a" && char <= "z";
+              if (isBlank) {
+                const wildcardIdx = currentRack.findIndex((ch) =>
+                  ["?", ".", "0", "*", "_"].includes(ch),
+                );
+                if (wildcardIdx !== -1) currentRack.splice(wildcardIdx, 1);
+              } else {
+                const idx = currentRack.indexOf(char.toUpperCase());
+                if (idx !== -1) {
+                  currentRack.splice(idx, 1);
+                } else {
+                  const wildcardIdx = currentRack.findIndex((ch) =>
+                    ["?", ".", "0", "*", "_"].includes(ch),
+                  );
+                  if (wildcardIdx !== -1) currentRack.splice(wildcardIdx, 1);
+                }
+              }
+            }
+          }
+        }
+        return currentRack.join("");
+      });
+    } else {
+      setOppScore((prev) =>
+        ((parseInt(prev, 10) || 0) + addedScore).toString(),
+      );
+      setInputMode("me");
+    }
+
+    setCommittedBoard(currentBoard.map((row) => [...row]));
+
+    if (moveRes.isBingo) {
+      playWin98Chord();
+    } else {
+      playTileClack();
+    }
+    setHoveredPlay(null);
+  }, [pushHistory]);
+
+  const revertUncommittedTiles = useCallback(() => {
+    const currentCommitted = committedBoardRef.current;
+    let hasDeltas = false;
+    for (let r = 0; r < 15; r++) {
+      for (let c = 0; c < 15; c++) {
+        if (boardRef.current[r][c] !== currentCommitted[r][c]) {
+          hasDeltas = true;
+          break;
+        }
+      }
+      if (hasDeltas) break;
+    }
+    if (!hasDeltas) return;
+
+    pushHistory();
+    setBoard(currentCommitted.map((row) => [...row]));
+    setTileOwners((prev) => {
+      const next = prev.map((row) => [...row]);
+      for (let r = 0; r < 15; r++) {
+        for (let c = 0; c < 15; c++) {
+          if (!currentCommitted[r][c]) {
+            next[r][c] = "";
+          }
+        }
+      }
+      return next;
+    });
+    playTileClack();
+  }, [pushHistory]);
+
+  commitCurrentPlayRef.current = commitCurrentPlay;
+  revertUncommittedTilesRef.current = revertUncommittedTiles;
+
   const applyHistoricalTurn = useCallback(
     (turn) => {
       pushHistory();
       setBoard(turn.board);
+      setCommittedBoard(turn.board.map((row) => [...row]));
       setTileOwners(turn.tileOwners);
       setMyScore(turn.myScore.toString());
       setOppScore(turn.oppScore.toString());
@@ -564,6 +732,11 @@ export default function WaddleWord() {
   const clearBoard = useCallback(() => {
     pushHistory();
     setBoard(
+      Array(15)
+        .fill(null)
+        .map(() => Array(15).fill("")),
+    );
+    setCommittedBoard(
       Array(15)
         .fill(null)
         .map(() => Array(15).fill("")),
@@ -630,6 +803,15 @@ export default function WaddleWord() {
           }
           return next;
         });
+        setCommittedBoard((prev) => {
+          const next = prev.map((row) => [...row]);
+          for (let i = 0; i < play.word.length; i++) {
+            const r = play.dir === "V" ? play.row + i : play.row;
+            const c = play.dir === "H" ? play.col + i : play.col;
+            next[r][c] = play.word[i];
+          }
+          return next;
+        });
         setTileOwners((prev) => {
           const next = prev.map((row) => [...row]);
           for (let i = 0; i < play.word.length; i++) {
@@ -643,7 +825,13 @@ export default function WaddleWord() {
         });
       }
 
+      const addedScore = parseInt(play.score, 10) || 0;
       if (!isOpp) {
+        setMyScore((prev) =>
+          ((parseInt(prev, 10) || 0) + addedScore).toString(),
+        );
+        setInputMode("opp");
+
         setRack((prevRack) => {
           let currentRack = prevRack.toUpperCase().split("");
           for (let i = 0; i < play.word.length; i++) {
@@ -673,8 +861,14 @@ export default function WaddleWord() {
           }
           return currentRack.join("");
         });
+      } else {
+        setOppScore((prev) =>
+          ((parseInt(prev, 10) || 0) + addedScore).toString(),
+        );
+        setInputMode("me");
       }
 
+      playTileClack();
       setHoveredPlay(null);
     },
     [board, pushHistory],
@@ -807,6 +1001,9 @@ export default function WaddleWord() {
               onToggleInputMode={() =>
                 setInputMode((m) => (m === "me" ? "opp" : "me"))
               }
+              stagedMoveEvaluation={stagedMoveEvaluation}
+              onCommitPlay={commitCurrentPlay}
+              onRevertPlay={revertUncommittedTiles}
             />
 
             <div className="v3-layout">
@@ -852,6 +1049,16 @@ export default function WaddleWord() {
                     }
                   }}
                   onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      commitCurrentPlay();
+                      return;
+                    }
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      revertUncommittedTiles();
+                      return;
+                    }
                     if (e.altKey || e.ctrlKey || e.metaKey) {
                       e.preventDefault();
                       return;
@@ -894,6 +1101,7 @@ export default function WaddleWord() {
                           const previewChar = previewMap[`${r},${c}`];
                           const oppPreviewChar = !previewChar ? oppPreviewMap[`${r},${c}`] : null;
                           const premium = activePreset.premiums[`${r},${c}`];
+                          const isUncommitted = Boolean(tileVal && !committedBoard[r]?.[c]);
 
                           return (
                             <BoardCell
@@ -902,6 +1110,7 @@ export default function WaddleWord() {
                               c={c}
                               dangerType={dangerSquares.get(`${r},${c}`)}
                               tileVal={tileVal}
+                              isUncommitted={isUncommitted}
                               previewChar={previewChar}
                               oppPreviewChar={oppPreviewChar}
                               premium={premium}
