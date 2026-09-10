@@ -2007,6 +2007,7 @@ self.onmessage = async function (e) {
             blocksDoubleDouble: false,
             blankSurchargeApplied: false,
             retainsBlank: keptBlanks > 0,
+            blankPreserveBoosted: false,
             baseScore: 0,
             defPenalty: 0,
           };
@@ -2015,19 +2016,34 @@ self.onmessage = async function (e) {
     }
   }
 
-  // Stage 1: Blank Consumption Surcharge
-  // Deduct -14.0 equity if candidate play expends a blank without scoring >= 50 or bingoing,
-  // when a non-blank alternative is within 15 points
+  // Stage 7: Championship Blank Tile Retention Engine
+  // 1. Identify when rack contains a wildcard (initialWildcards > 0).
+  // 2. If a candidate consumes the blank:
+  //    - If score < 50 and tilesUsed < 7 (non-bingo): apply Blank Consumption Surcharge (-14.0 pts)
+  //      when a non-blank play exists with score within 15 points.
+  // 3. If a non-blank play exists with score within 15 points of the top blank play,
+  //    boost the non-blank play (+4.0 pts) to actively reward wildcard preservation.
   if (initialWildcards > 0) {
     let maxNonBlankScore = -999;
+    let maxBlankBurningScore = -999;
+
     for (let i = 0; i < resultsCount; i++) {
-      if ((RES_TACTICS[i] & (1 << 11)) === 0) {
+      const usedBlank = (RES_TACTICS[i] & (1 << 11)) !== 0;
+      if (!usedBlank) {
         if (RES_SCORE[i] > maxNonBlankScore) {
           maxNonBlankScore = RES_SCORE[i];
+        }
+      } else {
+        const isBingo = (RES_TACTICS[i] & (1 << 12)) !== 0;
+        if (!isBingo && RES_SCORE[i] < 50) {
+          if (RES_SCORE[i] > maxBlankBurningScore) {
+            maxBlankBurningScore = RES_SCORE[i];
+          }
         }
       }
     }
 
+    // Apply Blank Consumption Surcharge (-14.0 pts)
     if (maxNonBlankScore > -999) {
       for (let i = 0; i < resultsCount; i++) {
         const usedBlank = (RES_TACTICS[i] & (1 << 11)) !== 0;
@@ -2037,6 +2053,20 @@ self.onmessage = async function (e) {
           if (!isBingo && score < 50 && (score - maxNonBlankScore <= 15)) {
             RES_TOTAL_VAL[i] -= 14.0;
             RES_TACTICS[i] |= (1 << 9); // Bit 9: blankSurchargeApplied
+          }
+        }
+      }
+    }
+
+    // Boost non-blank plays within 15 points of the blank-burning play (+4.0 pts)
+    if (maxBlankBurningScore > -999) {
+      for (let i = 0; i < resultsCount; i++) {
+        const usedBlank = (RES_TACTICS[i] & (1 << 11)) !== 0;
+        if (!usedBlank) {
+          const score = RES_SCORE[i];
+          if (maxBlankBurningScore - score <= 15) {
+            RES_TOTAL_VAL[i] += 4.0;
+            RES_TACTICS[i] |= (1 << 13); // Bit 13: blankPreserveBoosted
           }
         }
       }
@@ -2249,6 +2279,7 @@ self.onmessage = async function (e) {
       blocksDoubleDouble: (RES_TACTICS[idx] & 256) === 256,
       blankSurchargeApplied: (RES_TACTICS[idx] & 512) === 512,
       retainsBlank: (RES_TACTICS[idx] & 1024) === 1024,
+      blankPreserveBoosted: (RES_TACTICS[idx] & 8192) === 8192,
       baseScore: RES_SCORE[idx],
       defPenalty: RES_SCORE[idx] + Math.round(RES_EQUITY[idx] * 10) / 10 - Math.round(totalValAdjusted * 10) / 10,
       oppBestReply,

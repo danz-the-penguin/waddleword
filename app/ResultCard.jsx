@@ -243,9 +243,13 @@ const ResultCard = React.memo(
                       borderColor: "#00acc1",
                       fontWeight: "bold",
                     }}
-                    title="Cyan Recommendation: Preserves wildcard blank (?) for future high-equity bingos."
+                    title={
+                      play.blankPreserveBoosted
+                        ? "Cyan Recommendation (+4.0 Boost): Preserves wildcard blank (?) when a non-blank play is within 15 pts of mediocre blank moves."
+                        : "Cyan Recommendation: Preserves wildcard blank (?) for future high-equity bingos."
+                    }
                   >
-                    💎 RETAIN BLANK
+                    💎 RETAIN BLANK{play.blankPreserveBoosted ? " (+4)" : ""}
                   </span>
                 )}
 
