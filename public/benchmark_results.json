@@ -1,18 +1,21 @@
 {
   "totalGames": 100,
-  "durationSeconds": 34,
+  "durationSeconds": 17.3,
   "currentEngine": {
-    "wins": 45,
-    "winRate": 45,
-    "avgScore": 387.2,
-    "multiMultiplierConcessions": 108
+    "wins": 39,
+    "winRate": 39,
+    "avgScore": 390.5,
+    "concededBingos": 149,
+    "multiMultiplierConcessions": 125
   },
   "preStage1Variant": {
-    "wins": 55,
-    "winRate": 55,
-    "avgScore": 386.9,
-    "multiMultiplierConcessions": 104
+    "wins": 60,
+    "winRate": 60,
+    "avgScore": 395.7,
+    "concededBingos": 140,
+    "multiMultiplierConcessions": 112
   },
-  "concessionReductionPercent": -3.8,
-  "avgMargin": 0.3
+  "concessionReductionPercent": -11.6,
+  "bingoConcessionReductionPercent": -6.4,
+  "avgMargin": -5.2
 }

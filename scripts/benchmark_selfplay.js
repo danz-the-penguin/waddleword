@@ -156,6 +156,11 @@ async function playOneGame(gameNum) {
     [p2Name]: 0  // Multi-multiplier blowouts conceded by PreStage1 Variant
   };
 
+  const bingoConcessions = {
+    [p1Name]: 0, // Bingos conceded by Current Engine
+    [p2Name]: 0  // Bingos conceded by PreStage1 Variant
+  };
+
   drawTiles(bag, racks[p1Name]);
   drawTiles(bag, racks[p2Name]);
 
@@ -219,7 +224,14 @@ async function playOneGame(gameNum) {
       }
 
       // CRITICAL: Deduct tiles from rack BEFORE placing on board
-      racks[turnPlayer] = removeTilesFromRack(racks[turnPlayer], chosenPlay.word, board, chosenPlay.row, chosenPlay.col, chosenPlay.dir);
+      const rackBefore = racks[turnPlayer];
+      const rackAfter = removeTilesFromRack(rackBefore, chosenPlay.word, board, chosenPlay.row, chosenPlay.col, chosenPlay.dir);
+      const tilesPlaced = rackBefore.length - rackAfter.length;
+      if (tilesPlaced === 7) {
+        bingoConcessions[opponent]++;
+      }
+
+      racks[turnPlayer] = rackAfter;
       applyPlayToBoard(board, chosenPlay);
       scores[turnPlayer] += chosenPlay.score;
       drawTiles(bag, racks[turnPlayer]);
@@ -264,6 +276,8 @@ async function playOneGame(gameNum) {
     winner: scores[p1Name] > scores[p2Name] ? p1Name : scores[p2Name] > scores[p1Name] ? p2Name : "Tie",
     p1Concessions: multiConcessions[p1Name],
     p2Concessions: multiConcessions[p2Name],
+    p1BingoConcessions: bingoConcessions[p1Name],
+    p2BingoConcessions: bingoConcessions[p2Name],
     turnsPlayed: turnNumber
   };
 }
@@ -285,6 +299,8 @@ async function runBenchmark() {
   let p2ScoreSum = 0;
   let p1ConcessionsTotal = 0;
   let p2ConcessionsTotal = 0;
+  let p1BingoConcessionsTotal = 0;
+  let p2BingoConcessionsTotal = 0;
 
   const startTime = Date.now();
 
@@ -294,6 +310,8 @@ async function runBenchmark() {
     p2ScoreSum += result.p2Score;
     p1ConcessionsTotal += result.p1Concessions;
     p2ConcessionsTotal += result.p2Concessions;
+    p1BingoConcessionsTotal += result.p1BingoConcessions;
+    p2BingoConcessionsTotal += result.p2BingoConcessions;
 
     if (result.winner === "CurrentEngine") p1Wins++;
     else if (result.winner === "PreStage1Variant") p2Wins++;
@@ -306,7 +324,8 @@ async function runBenchmark() {
         `Game [${String(g).padStart(3)}/${TOTAL_GAMES}] | ` +
         `CurrentEngine Wins: ${p1Wins} (${currentWinRate}%) | ` +
         `Avg Score: ${(p1ScoreSum / g).toFixed(1)} vs ${(p2ScoreSum / g).toFixed(1)} | ` +
-        `Concessions: ${p1ConcessionsTotal} vs ${p2ConcessionsTotal} | ` +
+        `Conceded Bingos: ${p1BingoConcessionsTotal} vs ${p2BingoConcessionsTotal} | ` +
+        `Multi Concessions: ${p1ConcessionsTotal} vs ${p2ConcessionsTotal} | ` +
         `${elapsed}s`
       );
     }
@@ -317,6 +336,12 @@ async function runBenchmark() {
   const avgP1Score = (p1ScoreSum / TOTAL_GAMES).toFixed(1);
   const avgP2Score = (p2ScoreSum / TOTAL_GAMES).toFixed(1);
   const avgMargin = ((p1ScoreSum - p2ScoreSum) / TOTAL_GAMES).toFixed(1);
+
+  const reductionNum = p2ConcessionsTotal > 0 ? (((p2ConcessionsTotal - p1ConcessionsTotal) / p2ConcessionsTotal) * 100) : 0;
+  const bingoReductionNum = p2BingoConcessionsTotal > 0 ? (((p2BingoConcessionsTotal - p1BingoConcessionsTotal) / p2BingoConcessionsTotal) * 100) : 0;
+
+  const reductionStr = reductionNum >= 0 ? `-${reductionNum.toFixed(1)}%` : `+${Math.abs(reductionNum).toFixed(1)}%`;
+  const bingoReductionStr = bingoReductionNum >= 0 ? `-${bingoReductionNum.toFixed(1)}%` : `+${Math.abs(bingoReductionNum).toFixed(1)}%`;
 
   console.log("\n==========================================================================================");
   console.log("                            FINAL BENCHMARK RESULTS SUMMARY                               ");
@@ -331,11 +356,15 @@ async function runBenchmark() {
   console.log(`Pre-Stage 1 Variant Avg Score:    ${avgP2Score} pts`);
   console.log(`Average Margin:                   +${avgMargin} pts`);
   console.log(`------------------------------------------------------------------------------------------`);
-  console.log(`Multi-Multiplier Concessions:`);
+  console.log(`Conceded Bingos:`);
+  console.log(`  Current Engine Conceded:        ${p1BingoConcessionsTotal} (Avg ${(p1BingoConcessionsTotal / TOTAL_GAMES).toFixed(2)} / game)`);
+  console.log(`  Pre-Stage 1 Variant Conceded:   ${p2BingoConcessionsTotal} (Avg ${(p2BingoConcessionsTotal / TOTAL_GAMES).toFixed(2)} / game)`);
+  console.log(`  Bingo Concession Reduction:     ${bingoReductionStr}`);
+  console.log(`------------------------------------------------------------------------------------------`);
+  console.log(`Multi-Multiplier Concessions (>= 70 pts):`);
   console.log(`  Current Engine Conceded:        ${p1ConcessionsTotal} (Avg ${(p1ConcessionsTotal / TOTAL_GAMES).toFixed(2)} / game)`);
   console.log(`  Pre-Stage 1 Variant Conceded:   ${p2ConcessionsTotal} (Avg ${(p2ConcessionsTotal / TOTAL_GAMES).toFixed(2)} / game)`);
-  const reduction = p2ConcessionsTotal > 0 ? (((p2ConcessionsTotal - p1ConcessionsTotal) / p2ConcessionsTotal) * 100).toFixed(1) : 0;
-  console.log(`  Defensive Concession Reduction: -${reduction}%`);
+  console.log(`  Defensive Concession Reduction: ${reductionStr}`);
   console.log("==========================================================================================\n");
 
   const BENCHMARK_OUT = path.join(__dirname, '../public/benchmark_results.json');
@@ -346,15 +375,18 @@ async function runBenchmark() {
       wins: p1Wins,
       winRate: parseFloat(winRate),
       avgScore: parseFloat(avgP1Score),
+      concededBingos: p1BingoConcessionsTotal,
       multiMultiplierConcessions: p1ConcessionsTotal
     },
     preStage1Variant: {
       wins: p2Wins,
       winRate: parseFloat(((p2Wins / TOTAL_GAMES) * 100).toFixed(1)),
       avgScore: parseFloat(avgP2Score),
+      concededBingos: p2BingoConcessionsTotal,
       multiMultiplierConcessions: p2ConcessionsTotal
     },
-    concessionReductionPercent: parseFloat(reduction),
+    concessionReductionPercent: parseFloat(reductionNum.toFixed(1)),
+    bingoConcessionReductionPercent: parseFloat(bingoReductionNum.toFixed(1)),
     avgMargin: parseFloat(avgMargin)
   }, null, 2));
 
