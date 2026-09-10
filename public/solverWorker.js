@@ -852,6 +852,7 @@ async function runGPUSimulations(
   totalUnseen,
   activeGaddag,
   scoreDifferential = 0,
+  lambda = 0.85,
 ) {
   if (!gpuDevice || !gpuPipeline || !activeGaddag) return false;
 
@@ -961,13 +962,14 @@ async function runGPUSimulations(
     totalOppScoreSum += avgOppScore;
   }
 
-  // Relative Defense & Absolute Volatility Penalties (Ruthlessly Protect Leads)
-  const baselineOppScore = totalOppScoreSum / topN;
+  // Stage 8: Empirical Net-Spread & Lead-Dependent Volatility Integration
+  // Formula: TotalVal = Score + LeaveEquity + (NetSpread × λ) + TacticalDefAdjustments
   for (let i = 0; i < topN; i++) {
-    const deltaDefense = baselineOppScore - finalPlays[i].avgOppScore;
+    const play = finalPlays[i];
+    const oppScore = play.avgOppScore;
+    const netSpread = play.netSpread;
 
     let volatilityAdjustment = 0;
-    const oppScore = finalPlays[i].avgOppScore;
     if (oppScore > 32.0) {
       const excess = oppScore - 32.0;
       if (scoreDifferential > 30) {
@@ -983,7 +985,10 @@ async function runGPUSimulations(
       volatilityAdjustment = -3.0; // Lockdown bonus when protecting lead
     }
 
-    finalPlays[i].totalVal = Math.round((finalPlays[i].totalVal + deltaDefense - volatilityAdjustment) * 10) / 10;
+    const tacticalAdjustments = (play.totalVal || 0) - (play.score + (play.leaveEquity || 0));
+    play.totalVal = Math.round(
+      (play.score + (play.leaveEquity || 0) + (netSpread * lambda) + tacticalAdjustments - volatilityAdjustment) * 10
+    ) / 10;
   }
 
   poolReadBuffer.unmap();
@@ -993,7 +998,7 @@ async function runGPUSimulations(
 }
 
 // Lightweight CPU Monte Carlo Fallback (Option 2B)
-function runCPUSimulations(finalPlays, unseenArray, totalUnseen, scoreDifferential = 0) {
+function runCPUSimulations(finalPlays, unseenArray, totalUnseen, scoreDifferential = 0, lambda = 0.85) {
   finalPlays.sort((a, b) => b.totalVal - a.totalVal);
   const topN = Math.min(finalPlays.length, 16);
   const SIMS = 128;
@@ -1129,13 +1134,14 @@ function runCPUSimulations(finalPlays, unseenArray, totalUnseen, scoreDifferenti
     totalOppScoreSum += avgOppScore;
   }
 
-  // Relative Defense & Absolute Volatility Penalties (Ruthlessly Protect Leads)
-  const baselineOppScore = totalOppScoreSum / topN;
+  // Stage 8: Empirical Net-Spread & Lead-Dependent Volatility Integration
+  // Formula: TotalVal = Score + LeaveEquity + (NetSpread × λ) + TacticalDefAdjustments
   for (let i = 0; i < topN; i++) {
-    const deltaDefense = baselineOppScore - finalPlays[i].avgOppScore;
+    const play = finalPlays[i];
+    const oppScore = play.avgOppScore;
+    const netSpread = play.netSpread;
 
     let volatilityAdjustment = 0;
-    const oppScore = finalPlays[i].avgOppScore;
     if (oppScore > 32.0) {
       const excess = oppScore - 32.0;
       if (scoreDifferential > 30) {
@@ -1151,7 +1157,10 @@ function runCPUSimulations(finalPlays, unseenArray, totalUnseen, scoreDifferenti
       volatilityAdjustment = -3.0; // Lockdown bonus when protecting lead
     }
 
-    finalPlays[i].totalVal = Math.round((finalPlays[i].totalVal + deltaDefense - volatilityAdjustment) * 10) / 10;
+    const tacticalAdjustments = (play.totalVal || 0) - (play.score + (play.leaveEquity || 0));
+    play.totalVal = Math.round(
+      (play.score + (play.leaveEquity || 0) + (netSpread * lambda) + tacticalAdjustments - volatilityAdjustment) * 10
+    ) / 10;
   }
 }
 
@@ -1194,6 +1203,7 @@ self.onmessage = async function (e) {
     manualAvailableTiles,
     scoreDifferential = 0,
     bagCount = null,
+    lambda = 0.85,
     equityMode = "static",
     workerId = 0,
     numWorkers = 1,
@@ -2187,7 +2197,8 @@ self.onmessage = async function (e) {
             dir: oppReply.bestOppDir,
           };
           netSpread = RES_SCORE[idx] - oppReply.maxOppScore;
-          totalValAdjusted = netSpread + RES_EQUITY[idx] * 0.5;
+          const tacticalAdj = RES_TOTAL_VAL[idx] - (RES_SCORE[idx] + RES_EQUITY[idx]);
+          totalValAdjusted = RES_SCORE[idx] + RES_EQUITY[idx] + (netSpread * lambda) + tacticalAdj;
         }
       }
     } else if (
@@ -2254,6 +2265,8 @@ self.onmessage = async function (e) {
           dir: oppReply.bestOppDir,
         };
         netSpread = RES_SCORE[idx] - oppReply.maxOppScore;
+        const tacticalAdj = RES_TOTAL_VAL[idx] - (RES_SCORE[idx] + RES_EQUITY[idx]);
+        totalValAdjusted = RES_SCORE[idx] + RES_EQUITY[idx] + (netSpread * lambda) + tacticalAdj;
       }
     }
 
@@ -2321,9 +2334,9 @@ self.onmessage = async function (e) {
     for (let j = 0; j < UNSEEN_COUNTS[26]; j++) unseenArray.push(26);
 
     if (gpuDevice) {
-      await runGPUSimulations(finalPlays, unseenArray, totalUnseen, gaddag, scoreDifferential);
+      await runGPUSimulations(finalPlays, unseenArray, totalUnseen, gaddag, scoreDifferential, lambda);
     } else {
-      runCPUSimulations(finalPlays, unseenArray, totalUnseen, scoreDifferential);
+      runCPUSimulations(finalPlays, unseenArray, totalUnseen, scoreDifferential, lambda);
     }
   }
 
