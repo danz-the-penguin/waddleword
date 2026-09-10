@@ -409,7 +409,65 @@ export default function ControlPanel({
           {/* Staged Move Live Detection & Action HUD */}
           {stagedMoveEvaluation ? (
             stagedMoveEvaluation.isValid ? (
-              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    fontSize: "11px",
+                  }}
+                >
+                  <span
+                    style={{
+                      backgroundColor: "#e8f4f8",
+                      color: "#005580",
+                      padding: "1px 5px",
+                      borderRadius: "2px",
+                      fontWeight: "bold",
+                      border: "1px solid #b8dbe8",
+                    }}
+                  >
+                    📍 {stagedMoveEvaluation.posString}
+                  </span>
+                  {stagedMoveEvaluation.isBingo && (
+                    <span
+                      style={{
+                        backgroundColor: "#fff3cd",
+                        color: "#856404",
+                        padding: "1px 5px",
+                        borderRadius: "2px",
+                        fontWeight: "bold",
+                        border: "1px solid #ffeeba",
+                      }}
+                    >
+                      🎉 BINGO (+{stagedMoveEvaluation.bingoBonus})
+                    </span>
+                  )}
+                  {stagedMoveEvaluation.crossWords?.map((cw, idx) => (
+                    <span
+                      key={idx}
+                      style={{
+                        backgroundColor: "#eef2f7",
+                        color: "#334155",
+                        padding: "1px 4px",
+                        borderRadius: "2px",
+                        fontSize: "10px",
+                        border: "1px solid #cbd5e1",
+                      }}
+                      title={`Cross-word ${cw.word} at ${cw.posString} (+${cw.score} pts)`}
+                    >
+                      +{cw.word} ({cw.score})
+                    </span>
+                  ))}
+                </div>
                 <button
                   className="win98-button"
                   onClick={onCommitPlay}

@@ -1274,6 +1274,7 @@ export default function WaddleWord() {
             gpuEnabled={gpuEnabled}
             inputMode={inputMode}
             scoreDifferential={scoreDifferential}
+            stagedMoveEvaluation={stagedMoveEvaluation}
           />
         </div>
 
