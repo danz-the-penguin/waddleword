@@ -534,6 +534,35 @@
   box-shadow: inset 1px 1px 3px rgba(0,0,0,0.5);
 }
 
+.cell-opp-preview {
+  background-color: rgba(211, 47, 47, 0.35);
+  color: #b71c1c;
+  border: 2px dashed #d32f2f;
+  font-size: 14px;
+  font-weight: bold;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  opacity: 0.85;
+  backdrop-filter: blur(1px);
+  box-shadow: inset 1px 1px 3px rgba(183, 28, 28, 0.4);
+  animation: pulse-opp-preview 1.6s infinite alternate ease-in-out;
+}
+
+@keyframes pulse-opp-preview {
+  0% {
+    opacity: 0.7;
+    border-color: #ef5350;
+  }
+  100% {
+    opacity: 0.95;
+    border-color: #b71c1c;
+  }
+}
+
 .cell-tile .tile-score-sub,
 .cell-preview .tile-score-sub {
   position: absolute;
@@ -543,6 +572,16 @@
   font-weight: normal;
   line-height: 1;
   color: #333333;
+}
+
+.cell-opp-preview .tile-score-sub {
+  position: absolute;
+  bottom: 1px;
+  right: 2px;
+  font-size: 8px;
+  font-weight: bold;
+  line-height: 1;
+  color: #b71c1c;
 }
 
 .result-card:hover .opponent-reply-block {
@@ -805,4 +844,32 @@
 .cell-danger-2w-adj {
   background: rgba(244, 143, 177, 0.7) !important;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15) !important;
+}
+
+/* Multi-Multiplier Threat Highlight: 9X Triple-Triple Corridor (Red Alert) */
+.cell-danger-9x-corridor {
+  background: #880e4f !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 0 0 2px #ff1744, 0 0 6px rgba(255, 23, 68, 0.6) !important;
+  animation: pulse-danger-9x 1.6s infinite alternate ease-in-out;
+  z-index: 2;
+}
+
+@keyframes pulse-danger-9x {
+  0% {
+    background: #880e4f !important;
+    box-shadow: inset 0 0 0 2px #ff1744, 0 0 4px rgba(255, 23, 68, 0.4) !important;
+  }
+  100% {
+    background: #b71c1c !important;
+    box-shadow: inset 0 0 0 2px #ff5252, 0 0 8px rgba(255, 82, 82, 0.8) !important;
+  }
+}
+
+/* Multi-Multiplier Threat Highlight: 4X Double-Double Corridor (Orange Alert) */
+.cell-danger-4x-corridor {
+  background: #e65100 !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 0 0 2px #ff9100, 0 0 5px rgba(255, 145, 0, 0.6) !important;
+  z-index: 2;
 }

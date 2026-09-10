@@ -171,15 +171,15 @@ const ResultCard = React.memo(
                     className="badge-illegal"
                     style={{
                       fontSize: "8px",
-                      padding: "1px 3px",
-                      backgroundColor: "#880e4f",
+                      padding: "1px 4px",
+                      backgroundColor: "#b71c1c",
                       color: "#ffffff",
-                      borderColor: "#ad1457",
+                      borderColor: "#ef5350",
                       fontWeight: "bold",
                     }}
-                    title="Critical Warning: Opens a 9x Triple-Triple corridor directly exposed to opponent bingos!"
+                    title="Critical Red Alert: Opens an unblocked 9x Triple-Triple corridor directly exposed to opponent bingos!"
                   >
-                    ⚠️ RISK: 9X TWS
+                    ⚠️ OPENS 9X TRIPLE-TRIPLE
                   </span>
                 )}
 
@@ -188,14 +188,15 @@ const ResultCard = React.memo(
                     className="badge-illegal"
                     style={{
                       fontSize: "8px",
-                      padding: "1px 3px",
-                      backgroundColor: "#c2185b",
+                      padding: "1px 4px",
+                      backgroundColor: "#e65100",
                       color: "#ffffff",
-                      borderColor: "#e91e63",
+                      borderColor: "#ff9800",
+                      fontWeight: "bold",
                     }}
-                    title="Warning: Opens a 4x Double-Double corridor exposed to high-scoring counter plays."
+                    title="Orange Alert: Opens a 4x Double-Double corridor exposed to high-scoring counter plays."
                   >
-                    ⚠️ RISK: 4X DWS
+                    ⚠️ OPENS 4X DBL-DBL
                   </span>
                 )}
 
@@ -236,12 +237,13 @@ const ResultCard = React.memo(
                     className="badge-legal"
                     style={{
                       fontSize: "8px",
-                      padding: "1px 3px",
-                      backgroundColor: "#0277bd",
+                      padding: "1px 4px",
+                      backgroundColor: "#00838f",
                       color: "#ffffff",
-                      borderColor: "#0288d1",
+                      borderColor: "#00acc1",
+                      fontWeight: "bold",
                     }}
-                    title="Retains Blank (?) for future high-equity bingos."
+                    title="Cyan Recommendation: Preserves wildcard blank (?) for future high-equity bingos."
                   >
                     💎 RETAIN BLANK
                   </span>
@@ -297,39 +299,74 @@ const ResultCard = React.memo(
             )
           </div>
 
-          {/* Counter-Move / Opponent Deduction Metrics */}
-          {play.oppBestReply ? (
+          {/* Net Exchange HUD: Score: +XX | Opp Counter: ~XX | Net: +XX */}
+          {!isExch && (
             <div
-              className="opponent-reply-block"
-              onMouseEnter={(e) => {
-                e.stopPropagation();
-                onHover([play, play.oppBestReply]);
+              className="net-exchange-hud"
+              style={{
+                marginTop: "4px",
+                padding: "3px 6px",
+                backgroundColor: "#f4f6f9",
+                border: "1px solid #b0bec5",
+                borderRadius: "2px",
+                fontSize: "10px",
+                fontFamily: "monospace",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "4px",
+                cursor: play.oppBestReply ? "pointer" : "default",
               }}
-              onMouseLeave={(e) => {
-                e.stopPropagation();
-                onHover(play);
-              }}
+              title={
+                play.oppBestReply
+                  ? `HastyBot Counter: "${play.oppBestReply.word}" (${play.oppBestReply.score} pts). Click to apply to board.`
+                  : play.avgOppScore != null
+                  ? `Simulated average opponent response: ~${play.avgOppScore} pts`
+                  : "Net Exchange Balance"
+              }
               onClick={(e) => {
-                e.stopPropagation();
-                onClick(play, false);
-                onClick(play.oppBestReply, true);
+                if (play.oppBestReply) {
+                  e.stopPropagation();
+                  onClick(play, false);
+                  onClick(play.oppBestReply, true);
+                }
               }}
-              title="Click to apply Opponent's counter-play to the board"
             >
-              Opp. Reply: {play.oppBestReply.word} ({play.oppBestReply.score}{" "}
-              PTS) &bull; Net:{" "}
-              {play.netSpread > 0 ? `+${play.netSpread}` : play.netSpread}
+              <span>
+                Score: <strong style={{ color: "#1b5e20" }}>+{play.score}</strong>
+              </span>
+              <span style={{ color: "#90a4ae" }}>|</span>
+              <span>
+                Opp Counter:{" "}
+                <strong style={{ color: "#b71c1c" }}>
+                  {play.oppBestReply
+                    ? `~${play.oppBestReply.score}`
+                    : play.avgOppScore != null
+                    ? `~${Math.round(play.avgOppScore)}`
+                    : "~0"}
+                </strong>
+                {play.oppBestReply && (
+                  <span style={{ fontSize: "9px", color: "#546e7a", marginLeft: "2px" }}>
+                    ({play.oppBestReply.word})
+                  </span>
+                )}
+              </span>
+              <span style={{ color: "#90a4ae" }}>|</span>
+              <span>
+                Net:{" "}
+                {(() => {
+                  const oppVal = play.oppBestReply?.score ?? play.avgOppScore ?? 0;
+                  const net = play.netSpread != null ? play.netSpread : play.score - oppVal;
+                  const netRounded = Math.round(net * 10) / 10;
+                  return (
+                    <strong style={{ color: netRounded >= 0 ? "#1b5e20" : "#b71c1c" }}>
+                      {netRounded >= 0 ? `+${netRounded}` : netRounded}
+                    </strong>
+                  );
+                })()}
+              </span>
             </div>
-          ) : play.avgOppScore != null ? (
-            <div
-              className="opponent-reply-block"
-              style={{ backgroundColor: "#f3e8ff", borderColor: "#d8b4fe", color: "#6b21a8" }}
-              title={`Simulated average opponent response: ~${play.avgOppScore} pts across Monte Carlo rollouts`}
-            >
-              Sim. Opp: ~{play.avgOppScore} PTS &bull; Net:{" "}
-              {play.netSpread > 0 ? `+${play.netSpread}` : play.netSpread}
-            </div>
-          ) : null}
+          )}
         </div>
 
         <div style={{ textAlign: "right", minWidth: "90px" }}>

@@ -2159,6 +2159,71 @@ self.onmessage = async function (e) {
           totalValAdjusted = netSpread + RES_EQUITY[idx] * 0.5;
         }
       }
+    } else if (
+      sortMode !== "score" &&
+      !isDeterministicOpponent &&
+      enableIntel &&
+      totalUnseen > 7 &&
+      i < 15
+    ) {
+      // Midgame Opponent Counter-Play Deduction: Sample representative threat rack from unseen pool
+      TEMP_BOARD_GRID.set(BOARD_GRID);
+      TEMP_BOARD_IS_BLANK.set(BOARD_IS_BLANK);
+      for (let k = 0; k < len; k++) {
+        const r = dir === "V" ? row + k : row;
+        const c = dir === "H" ? col + k : col;
+        const stored = RES_WORD_CHARS[charOffset + k];
+        const isBlank = stored >= 32;
+        const charCode = isBlank ? stored - 32 : stored;
+
+        TEMP_BOARD_GRID[r * 15 + c] = charCode + 1;
+        TEMP_BOARD_IS_BLANK[r * 15 + c] = isBlank ? 1 : 0;
+      }
+
+      const midOppCounts = new Int8Array(26);
+      let midOppWilds = 0;
+      let drawn = 0;
+      if (UNSEEN_COUNTS[26] > 0) {
+        midOppWilds = 1;
+        drawn++;
+      }
+      for (const pt of [25, 23, 16, 9, 18, 4, 0]) {
+        if (drawn < 7 && UNSEEN_COUNTS[pt] > 0) {
+          midOppCounts[pt]++;
+          drawn++;
+        }
+      }
+      for (let c = 0; c < 26 && drawn < 7; c++) {
+        const available = UNSEEN_COUNTS[c] - midOppCounts[c];
+        for (let k = 0; k < available && drawn < 7; k++) {
+          midOppCounts[c]++;
+          drawn++;
+        }
+      }
+
+      const oppReply = findOpponentBestScore(
+        gaddag,
+        TEMP_BOARD_GRID,
+        TEMP_BOARD_IS_BLANK,
+        midOppCounts,
+        midOppWilds,
+        bingoBonus,
+        row,
+        col,
+        dir,
+        len,
+      );
+
+      if (oppReply.bestOppWord) {
+        oppBestReply = {
+          word: oppReply.bestOppWord,
+          score: oppReply.maxOppScore,
+          row: oppReply.bestOppRow,
+          col: oppReply.bestOppCol,
+          dir: oppReply.bestOppDir,
+        };
+        netSpread = RES_SCORE[idx] - oppReply.maxOppScore;
+      }
     }
 
     finalPlays.push({

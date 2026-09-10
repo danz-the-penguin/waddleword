@@ -8,6 +8,7 @@ const BoardCell = React.memo(
     dangerType,
     tileVal,
     previewChar,
+    oppPreviewChar,
     premium,
     isSelected,
     isInActiveLine,
@@ -18,7 +19,9 @@ const BoardCell = React.memo(
   }) => {
     let cellClass = tileVal ? "" : premium ? `cell-${premium}` : "";
     if (!tileVal && dangerType) {
-      if (dangerType === "3W-center") cellClass += " cell-danger-3w-center";
+      if (dangerType === "9x-corridor") cellClass += " cell-danger-9x-corridor";
+      else if (dangerType === "4x-corridor") cellClass += " cell-danger-4x-corridor";
+      else if (dangerType === "3W-center") cellClass += " cell-danger-3w-center";
       else if (dangerType === "3W-adj") cellClass += " cell-danger-3w-adj";
       else if (dangerType === "2W-center") cellClass += " cell-danger-2w-center";
       else if (dangerType === "2W-adj") cellClass += " cell-danger-2w-adj";
@@ -50,6 +53,17 @@ const BoardCell = React.memo(
           <span className="tile-score-sub" style={{ color: "#ffffff" }}>
             {score}
           </span>
+        </div>
+      );
+    } else if (oppPreviewChar) {
+      const isBlank = oppPreviewChar >= "a" && oppPreviewChar <= "z";
+      const score = isBlank
+        ? 0
+        : (scores?.[oppPreviewChar.toLowerCase()] ?? (TILE_SCORES[oppPreviewChar.toUpperCase()] || 0));
+      renderTile = (
+        <div className="cell-opp-preview" title="HastyBot Counter-Play">
+          {oppPreviewChar.toUpperCase()}
+          <span className="tile-score-sub">{score}</span>
         </div>
       );
     }

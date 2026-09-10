@@ -279,3 +279,21 @@ export const BOARD_PRESETS = {
     },
   },
 };
+
+export const MULTI_CORRIDORS = [
+  // 8 Triple-Triple (9x) Corridors
+  { name: "H_Row0_Left",   isVert: false, line: 0,  start: 0, end: 7,  type: 9, m1: 0,   m2: 7 },
+  { name: "H_Row0_Right",  isVert: false, line: 0,  start: 7, end: 14, type: 9, m1: 7,   m2: 14 },
+  { name: "H_Row14_Left",  isVert: false, line: 14, start: 0, end: 7,  type: 9, m1: 210, m2: 217 },
+  { name: "H_Row14_Right", isVert: false, line: 14, start: 7, end: 14, type: 9, m1: 217, m2: 224 },
+  { name: "V_Col0_Top",    isVert: true,  line: 0,  start: 0, end: 7,  type: 9, m1: 0,   m2: 105 },
+  { name: "V_Col0_Bottom", isVert: true,  line: 0,  start: 7, end: 14, type: 9, m1: 105, m2: 210 },
+  { name: "V_Col14_Top",   isVert: true,  line: 14, start: 0, end: 7,  type: 9, m1: 14,  m2: 119 },
+  { name: "V_Col14_Bottom",isVert: true,  line: 14, start: 7, end: 14, type: 9, m1: 119, m2: 224 },
+  
+  // 4 Prime Double-Double (4x) Corridors (Distance 6)
+  { name: "V_Col4_E5_E11",    isVert: true,  line: 4,  start: 4, end: 10, type: 4, m1: 64,  m2: 154 },
+  { name: "V_Col10_K5_K11",   isVert: true,  line: 10, start: 4, end: 10, type: 4, m1: 70,  m2: 160 },
+  { name: "H_Row4_E5_K5",     isVert: false, line: 4,  start: 4, end: 10, type: 4, m1: 64,  m2: 70 },
+  { name: "H_Row10_E11_K11",  isVert: false, line: 10, start: 4, end: 10, type: 4, m1: 154, m2: 160 }
+];

@@ -236,6 +236,104 @@ export default function TutorialModal({ isOpen, onClose }) {
             Warning! Leaves 4+ vowels or triple duplicate vowels (e.g. I-I-I),
             leaving you vowel-heavy and drastically lowering your bingo odds.
           </li>
+          <li style={{ marginTop: "4px", marginBottom: "4px" }}>
+            <span
+              className="badge-illegal"
+              style={{
+                backgroundColor: "#b71c1c",
+                color: "#ffffff",
+                borderColor: "#ef5350",
+                fontWeight: "bold",
+                padding: "1px 3px",
+                fontSize: "9px",
+              }}
+            >
+              ⚠️ OPENS 9X TRIPLE-TRIPLE
+            </span>{" "}
+            Critical Red Alert! This move opens an unblocked 9x Triple-Triple
+            corridor bridging two Triple Word Scores, inviting catastrophic
+            opponent counter-bingos (140+ pts).
+          </li>
+          <li style={{ marginBottom: "4px" }}>
+            <span
+              className="badge-illegal"
+              style={{
+                backgroundColor: "#e65100",
+                color: "#ffffff",
+                borderColor: "#ff9800",
+                fontWeight: "bold",
+                padding: "1px 3px",
+                fontSize: "9px",
+              }}
+            >
+              ⚠️ OPENS 4X DBL-DBL
+            </span>{" "}
+            Orange Alert! Opens an exposed 4x Double-Double corridor giving your
+            opponent massive multi-multiplier scoring reach (70-100+ pts).
+          </li>
+          <li style={{ marginBottom: "4px" }}>
+            <span
+              className="badge-legal"
+              style={{
+                backgroundColor: "#1b5e20",
+                color: "#ffffff",
+                borderColor: "#2e7d32",
+                padding: "1px 3px",
+                fontSize: "9px",
+              }}
+            >
+              🛡️ BLOCKS 9X
+            </span>{" "}
+            &{" "}
+            <span
+              className="badge-legal"
+              style={{
+                backgroundColor: "#2e7d32",
+                color: "#ffffff",
+                borderColor: "#388e3c",
+                padding: "1px 3px",
+                fontSize: "9px",
+              }}
+            >
+              🛡️ BLOCKS 4X
+            </span>{" "}
+            Defensive masterplays that neutralize high-risk multi-multiplier
+            corridors before your opponent can exploit them.
+          </li>
+          <li style={{ marginBottom: "4px" }}>
+            <span
+              className="badge-legal"
+              style={{
+                backgroundColor: "#00838f",
+                color: "#ffffff",
+                borderColor: "#00acc1",
+                fontWeight: "bold",
+                padding: "1px 3px",
+                fontSize: "9px",
+              }}
+            >
+              💎 RETAIN BLANK
+            </span>{" "}
+            Cyan Recommendation! Preserves the wildcard blank on your rack for
+            high-equity future bingos when a non-blank move is close in score.
+          </li>
+          <li style={{ marginBottom: "4px" }}>
+            <span
+              className="badge-illegal"
+              style={{
+                backgroundColor: "#d84315",
+                color: "#ffffff",
+                borderColor: "#ff5722",
+                padding: "1px 3px",
+                fontSize: "9px",
+              }}
+            >
+              BLANK SURCHARGE (-14)
+            </span>{" "}
+            Penalty applied when burning a wildcard blank on a low-scoring
+            non-bingo move (&lt; 50 pts) when non-blank alternatives were within
+            15 pts.
+          </li>
         </ul>
 
         <div style={{ textAlign: "center", marginTop: "10px" }}>

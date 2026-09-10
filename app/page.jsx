@@ -10,7 +10,7 @@ import React, {
 import localforage from "localforage";
 import Link from "next/link";
 import "./scrabble.css";
-import { COLUMNS, BOARD_PRESETS } from "./presets";
+import { COLUMNS, BOARD_PRESETS, MULTI_CORRIDORS } from "./presets";
 import BoardCell from "./BoardCell";
 import ResultCard from "./ResultCard";
 import UnseenTileTracker from "./UnseenTileTracker";
@@ -96,23 +96,28 @@ export default function WaddleWord() {
   const dangerSquares = useMemo(() => {
     if (!showHeatmap) return new Map();
     const dangers = new Map();
+    const priority = {
+      "9x-corridor": 6,
+      "4x-corridor": 5,
+      "3W-center": 4,
+      "3W-adj": 3,
+      "2W-center": 2,
+      "2W-adj": 1,
+    };
+
+    const setDanger = (nr, nc, level) => {
+      const current = dangers.get(`${nr},${nc}`);
+      if (!current || priority[level] > priority[current]) {
+        dangers.set(`${nr},${nc}`, level);
+      }
+    };
+
+    // 1. Standard 3W and 2W threat radii
     for (let r = 0; r < 15; r++) {
       for (let c = 0; c < 15; c++) {
         if (board[r][c]) continue;
         const premium = activePreset.premiums[`${r},${c}`];
         if (premium === "3W" || premium === "2W") {
-          const setDanger = (nr, nc, level) => {
-            const current = dangers.get(`${nr},${nc}`);
-            const priority = {
-              "3W-center": 4,
-              "3W-adj": 3,
-              "2W-center": 2,
-              "2W-adj": 1,
-            };
-            if (!current || priority[level] > priority[current]) {
-              dangers.set(`${nr},${nc}`, level);
-            }
-          };
           setDanger(r, c, `${premium}-center`);
           if (r > 0 && !board[r - 1][c]) setDanger(r - 1, c, `${premium}-adj`);
           if (r < 14 && !board[r + 1][c]) setDanger(r + 1, c, `${premium}-adj`);
@@ -121,6 +126,44 @@ export default function WaddleWord() {
         }
       }
     }
+
+    // 2. Multi-Multiplier Corridors (9X Triple-Triple and 4X Double-Double Threats)
+    for (const c of MULTI_CORRIDORS) {
+      const m1r = Math.floor(c.m1 / 15);
+      const m1c = c.m1 % 15;
+      const m2r = Math.floor(c.m2 / 15);
+      const m2c = c.m2 % 15;
+      if (board[m1r]?.[m1c] && board[m2r]?.[m2c]) continue;
+
+      let emptyCount = 0;
+      let hasAnchor = false;
+      for (let p = c.start; p <= c.end; p++) {
+        const r = c.isVert ? p : c.line;
+        const col = c.isVert ? c.line : p;
+        if (board[r]?.[col]) {
+          hasAnchor = true;
+        } else {
+          emptyCount++;
+          const up = r > 0 && board[r - 1]?.[col];
+          const dn = r < 14 && board[r + 1]?.[col];
+          const lt = col > 0 && board[r]?.[col - 1];
+          const rt = col < 14 && board[r]?.[col + 1];
+          if (up || dn || lt || rt) hasAnchor = true;
+        }
+      }
+
+      if (emptyCount <= 8 && hasAnchor) {
+        const level = c.type === 9 ? "9x-corridor" : "4x-corridor";
+        for (let p = c.start; p <= c.end; p++) {
+          const r = c.isVert ? p : c.line;
+          const col = c.isVert ? c.line : p;
+          if (!board[r]?.[col]) {
+            setDanger(r, col, level);
+          }
+        }
+      }
+    }
+
     return dangers;
   }, [board, showHeatmap, activePreset]);
 
@@ -533,21 +576,44 @@ export default function WaddleWord() {
     setHoveredPlay(null);
   }, [pushHistory]);
 
-  const previewMap = useMemo(() => {
-    if (!hoveredPlay) return {};
-    const plays = Array.isArray(hoveredPlay) ? hoveredPlay : [hoveredPlay];
-    const map = {};
-    for (const p of plays) {
-      if (!p || p.dir === "EXCH") continue;
-      const { word, row, col, dir } = p;
+  const { previewMap, oppPreviewMap } = useMemo(() => {
+    if (!hoveredPlay) return { previewMap: {}, oppPreviewMap: {} };
+
+    let ourPlay = null;
+    let oppPlay = null;
+
+    if (Array.isArray(hoveredPlay)) {
+      ourPlay = hoveredPlay[0];
+      oppPlay = hoveredPlay[1] || ourPlay?.oppBestReply;
+    } else {
+      ourPlay = hoveredPlay;
+      oppPlay = hoveredPlay?.oppBestReply;
+    }
+
+    const pMap = {};
+    if (ourPlay && ourPlay.dir !== "EXCH" && ourPlay.word) {
+      const { word, row, col, dir } = ourPlay;
       for (let i = 0; i < word.length; i++) {
         const r = dir === "V" ? row + i : row;
         const c = dir === "H" ? col + i : col;
-        map[`${r},${c}`] = word[i];
+        pMap[`${r},${c}`] = word[i];
       }
     }
-    return map;
-  }, [hoveredPlay]);
+
+    const oMap = {};
+    if (oppPlay && oppPlay.dir !== "EXCH" && oppPlay.word) {
+      const { word, row, col, dir } = oppPlay;
+      for (let i = 0; i < word.length; i++) {
+        const r = dir === "V" ? row + i : row;
+        const c = dir === "H" ? col + i : col;
+        if (!pMap[`${r},${c}`] && !board[r]?.[c]) {
+          oMap[`${r},${c}`] = word[i];
+        }
+      }
+    }
+
+    return { previewMap: pMap, oppPreviewMap: oMap };
+  }, [hoveredPlay, board]);
 
   const applyPlay = useCallback(
     (play, isOpponentFlag) => {
@@ -826,6 +892,7 @@ export default function WaddleWord() {
                               ? selectedCell[0] === r
                               : selectedCell[1] === c);
                           const previewChar = previewMap[`${r},${c}`];
+                          const oppPreviewChar = !previewChar ? oppPreviewMap[`${r},${c}`] : null;
                           const premium = activePreset.premiums[`${r},${c}`];
 
                           return (
@@ -836,6 +903,7 @@ export default function WaddleWord() {
                               dangerType={dangerSquares.get(`${r},${c}`)}
                               tileVal={tileVal}
                               previewChar={previewChar}
+                              oppPreviewChar={oppPreviewChar}
                               premium={premium}
                               isSelected={isSelected}
                               isInActiveLine={isInActiveLine}
